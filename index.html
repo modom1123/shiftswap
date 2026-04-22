@@ -1,0 +1,712 @@
+import { useState, useRef } from "react";
+
+// ─── PALETTE ─────────────────────────────────────────────────────────────────
+const P = {
+  airplaneView:   "#80B0E8",
+  peonyBundle:    "#FFC0C0",
+  tropicalRain:   "#008471",
+  autumnLavender: "#D1CAEA",
+  limeade:        "#D6D35F",
+  tomatoJam:      "#C45F3F",
+  pureSun:        "#F5C518",
+  monetPonds:     "#6B7A3A",
+  bubbleGum:      "#F27BB0",
+  cream:          "#F5F0E8",
+  ink:            "#2B2118",
+  softInk:        "#5A4E44",
+};
+
+// ─── ROLES ────────────────────────────────────────────────────────────────────
+const ROLES = {
+  STORE_LEAD:     { label:"Store Lead",         short:"SL",  bg:P.tropicalRain,   text:"#fff",      secondary:"Optician" },
+  ASST_LEAD:      { label:"Asst. Store Lead",   short:"AL",  bg:P.airplaneView,   text:P.ink,       secondary:"Optician" },
+  SUPERVISOR:     { label:"Supervisor",          short:"SUP", bg:P.autumnLavender, text:P.tomatoJam, secondary:null },
+  OPT_SUPERVISOR: { label:"Optical Supervisor", short:"OS",  bg:P.limeade,        text:P.monetPonds,secondary:"Optician" },
+  OPTICIAN:       { label:"Optician",            short:"OPT", bg:P.tomatoJam,      text:"#fff",      secondary:null },
+  SALES_ADVISOR:  { label:"Sales Advisor",       short:"SA",  bg:P.peonyBundle,    text:P.tomatoJam, secondary:null },
+};
+
+const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+const SAMPLE_TEAM = [
+  { id:1, name:"Jordan M.",  role:"STORE_LEAD",     avatar:"JM", schedule:{Mon:"9:00-17:00",  Tue:"9:00-17:00",  Wed:null,          Thu:"9:00-17:00",  Fri:"9:00-17:00",  Sat:null,          Sun:"10:00-18:00"}, isCurrentUser:false },
+  { id:2, name:"Alex R.",    role:"ASST_LEAD",      avatar:"AR", schedule:{Mon:"10:00-18:00", Tue:null,          Wed:"10:00-18:00", Thu:"10:00-18:00", Fri:"10:00-18:00", Sat:"9:00-17:00",  Sun:null          }, isCurrentUser:false },
+  { id:3, name:"Sam T.",     role:"OPT_SUPERVISOR", avatar:"ST", schedule:{Mon:"11:00-19:00", Tue:"11:00-19:00", Wed:"11:00-19:00", Thu:null,          Fri:"11:00-19:00", Sat:"10:00-18:00", Sun:null          }, isCurrentUser:false },
+  { id:4, name:"Riley K.",   role:"OPTICIAN",       avatar:"RK", schedule:{Mon:null,          Tue:"9:00-17:00",  Wed:"9:00-17:00",  Thu:"9:00-17:00",  Fri:null,          Sat:"10:00-18:00", Sun:"10:00-18:00"}, isCurrentUser:false },
+  { id:5, name:"Casey B.",   role:"SALES_ADVISOR",  avatar:"CB", schedule:{Mon:"12:00-20:00", Tue:"12:00-20:00", Wed:null,          Thu:"12:00-20:00", Fri:"12:00-20:00", Sat:"11:00-19:00", Sun:null          }, isCurrentUser:false },
+  { id:6, name:"Morgan L.",  role:"SALES_ADVISOR",  avatar:"ML", schedule:{Mon:"9:00-17:00",  Tue:null,          Wed:"9:00-17:00",  Thu:null,          Fri:"9:00-17:00",  Sat:"10:00-18:00", Sun:"12:00-20:00"}, isCurrentUser:false },
+  { id:7, name:"Drew P.",    role:"SUPERVISOR",     avatar:"DP", schedule:{Mon:null,          Tue:"10:00-18:00", Wed:"10:00-18:00", Thu:"10:00-18:00", Fri:null,          Sat:"9:00-17:00",  Sun:"9:00-17:00" }, isCurrentUser:false },
+  { id:8, name:"Priya (You)",role:"OPTICIAN",       avatar:"PY", schedule:{Mon:"9:00-17:00",  Tue:"9:00-17:00",  Wed:null,          Thu:null,          Fri:"11:00-19:00", Sat:"10:00-18:00", Sun:null          }, isCurrentUser:true  },
+];
+
+const SAMPLE_REQUESTS = [
+  { id:1, requesterId:5, type:"COVER", day:"Fri", requesterShift:"12:00-20:00", note:"Doctor appointment", offers:[], status:null },
+  { id:2, requesterId:4, type:"SWAP",  day:"Sat", requesterShift:"10:00-18:00", note:"Family event",       offers:[{offererId:6,offeredShift:"10:00-18:00"}], status:null },
+];
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+function parseTime(t) { const [h,m]=t.split(":").map(Number); return h+m/60; }
+function shiftHours(s) { if(!s) return 0; const [a,b]=s.split("-"); return parseTime(b)-parseTime(a); }
+
+function fmt12(t) {
+  if(!t) return "";
+  const [h,m]=t.split(":").map(Number);
+  const ampm=h>=12?"pm":"am";
+  const hr=h%12||12;
+  return m===0?`${hr}${ampm}`:`${hr}:${String(m).padStart(2,"0")}${ampm}`;
+}
+
+function fmtShift(s) {
+  if(!s) return "OFF";
+  const [a,b]=s.split("-");
+  return `${fmt12(a)}–${fmt12(b)}`;
+}
+
+function hourDiff(a,b) {
+  const d=shiftHours(b)-shiftHours(a);
+  if(d===0) return {label:"Equal swap", color:P.monetPonds,  bg:`${P.limeade}35`};
+  if(d>0)   return {label:`+${d}h for you`, color:"#8B6914", bg:`${P.pureSun}35`};
+  return          {label:`${d}h for you`,  color:P.tomatoJam, bg:`${P.peonyBundle}60`};
+}
+
+function isOptician(rk) { return rk==="OPTICIAN"||ROLES[rk]?.secondary==="Optician"; }
+
+// ─── TINY COMPONENTS ──────────────────────────────────────────────────────────
+function Avatar({ initials, roleKey, size=36 }) {
+  const r=ROLES[roleKey]||ROLES.SALES_ADVISOR;
+  return (
+    <div style={{width:size,height:size,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.3,fontWeight:900,background:r.bg,color:r.text,fontFamily:"'DM Mono',monospace"}}>
+      {initials}
+    </div>
+  );
+}
+
+function RolePill({ roleKey, mini }) {
+  const r=ROLES[roleKey]||ROLES.SALES_ADVISOR;
+  return (
+    <span style={{background:r.bg,color:r.text,fontSize:mini?8:10,fontWeight:800,padding:mini?"1px 5px":"2px 8px",borderRadius:5,fontFamily:"'DM Mono',monospace",letterSpacing:".04em",display:"inline-flex",alignItems:"center",gap:3,flexShrink:0}}>
+      {r.short}{r.secondary&&!mini&&<span style={{opacity:.55,fontWeight:500}}>+opt</span>}
+    </span>
+  );
+}
+
+function DiffBadge({ shiftA, shiftB }) {
+  const d=hourDiff(shiftA,shiftB);
+  return <span style={{background:d.bg,color:d.color,fontSize:10,fontWeight:800,padding:"3px 8px",borderRadius:6,fontFamily:"'DM Mono',monospace",flexShrink:0}}>{d.label}</span>;
+}
+
+function SectionLabel({ children, small }) {
+  return <div style={{fontSize:small?9.5:11,fontWeight:800,color:P.softInk,letterSpacing:".1em",fontFamily:"'DM Mono',monospace",marginBottom:small?6:10,textTransform:"uppercase"}}>{children}</div>;
+}
+
+function EmptyState({ icon, text }) {
+  return (
+    <div style={{background:`${P.cream}`,border:`2px dashed ${P.autumnLavender}`,borderRadius:14,padding:"28px 20px",textAlign:"center"}}>
+      <div style={{fontSize:28,marginBottom:8}}>{icon}</div>
+      <div style={{fontSize:13,color:P.softInk,lineHeight:1.5}}>{text}</div>
+    </div>
+  );
+}
+
+function BottomSheet({ children, onClose }) {
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(43,33,24,.45)",zIndex:100,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"22px 22px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:480,maxHeight:"92dvh",overflowY:"auto"}}>
+        <div style={{width:40,height:4,background:P.cream,borderRadius:2,margin:"0 auto 20px"}} />
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─── HOME ─────────────────────────────────────────────────────────────────────
+function HomeScreen({ team, requests, currentUser, onRespond }) {
+  const myRequests    = requests.filter(r=>r.requesterId===currentUser.id);
+  const otherRequests = requests.filter(r=>r.requesterId!==currentUser.id);
+  return (
+    <div style={{padding:"20px 16px",display:"flex",flexDirection:"column",gap:24}}>
+      {/* Optician coverage banner */}
+      <div style={{background:P.tropicalRain,borderRadius:20,padding:"18px 20px",color:"#fff"}}>
+        <div style={{fontSize:9,opacity:.7,letterSpacing:".12em",fontFamily:"'DM Mono',monospace",marginBottom:10}}>OPTICIAN COVERAGE · THIS WEEK</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {DAYS.map(day=>{
+            const ok=team.some(m=>isOptician(m.role)&&m.schedule[day]);
+            return (
+              <div key={day} style={{background:ok?"rgba(255,255,255,.18)":`${P.tomatoJam}BB`,borderRadius:8,padding:"6px 10px",textAlign:"center",minWidth:36}}>
+                <div style={{fontSize:9,opacity:.8,fontFamily:"'DM Mono',monospace"}}>{day}</div>
+                <div style={{fontSize:16,marginTop:2}}>{ok?"✓":"⚠"}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {myRequests.length>0&&<section><SectionLabel>My Active Requests</SectionLabel><div style={{display:"flex",flexDirection:"column",gap:10}}>{myRequests.map(r=><ReqCard key={r.id} req={r} team={team} currentUser={currentUser} onRespond={onRespond} isOwn />)}</div></section>}
+      <section>
+        <SectionLabel>Open Requests</SectionLabel>
+        {otherRequests.length===0
+          ?<EmptyState icon="🌿" text="No open requests right now" />
+          :<div style={{display:"flex",flexDirection:"column",gap:10}}>{otherRequests.map(r=><ReqCard key={r.id} req={r} team={team} currentUser={currentUser} onRespond={onRespond} />)}</div>}
+      </section>
+    </div>
+  );
+}
+
+function ReqCard({ req, team, currentUser, onRespond, isOwn }) {
+  const [open,setOpen]=useState(false);
+  const requester=team.find(m=>m.id===req.requesterId);
+  const myShift=currentUser.schedule[req.day];
+  const alreadyOffered=req.offers?.find(o=>o.offererId===currentUser.id);
+  const hrs=shiftHours(req.requesterShift);
+
+  return (
+    <div style={{background:"#fff",borderRadius:16,overflow:"hidden",boxShadow:"0 2px 12px rgba(43,33,24,.08)",border:`1.5px solid ${P.cream}`}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",cursor:"pointer"}} onClick={()=>setOpen(!open)}>
+        <Avatar initials={requester.avatar} roleKey={requester.role} />
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
+            <span style={{fontWeight:900,fontSize:14,color:P.ink}}>{requester.name}</span>
+            <RolePill roleKey={requester.role} />
+          </div>
+          <div style={{fontSize:11.5,color:P.softInk,marginTop:2}}>
+            {req.type==="COVER"?"🙋 Full cover":"🔄 Swap"} · <strong>{req.day}</strong> · {fmtShift(req.requesterShift)} <span style={{opacity:.55}}>({hrs}h)</span>
+          </div>
+        </div>
+        <div style={{background:req.type==="COVER"?`${P.pureSun}40`:`${P.airplaneView}40`,color:req.type==="COVER"?"#8B6914":P.tropicalRain,fontSize:9,fontWeight:800,padding:"4px 9px",borderRadius:6,fontFamily:"'DM Mono',monospace",flexShrink:0}}>
+          {req.type}
+        </div>
+        <span style={{color:"#ccc",fontSize:12,marginLeft:2}}>{open?"▲":"▼"}</span>
+      </div>
+
+      {open&&(
+        <div style={{borderTop:`1.5px solid ${P.cream}`,padding:"14px 16px",background:`${P.cream}55`,display:"flex",flexDirection:"column",gap:12}}>
+          {req.note&&<div style={{fontSize:12.5,color:P.softInk,fontStyle:"italic"}}>"{req.note}"</div>}
+
+          {req.offers?.length>0&&(
+            <div>
+              <SectionLabel small>Offers Received</SectionLabel>
+              <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                {req.offers.map((offer,i)=>{
+                  const offerer=team.find(m=>m.id===offer.offererId);
+                  return (
+                    <div key={i} style={{background:"#fff",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:10,border:`1.5px solid ${P.cream}`}}>
+                      <Avatar initials={offerer?.avatar} roleKey={offerer?.role} size={28} />
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:800,fontSize:13,color:P.ink}}>{offerer?.name}</div>
+                        <div style={{fontSize:11,color:P.softInk,fontFamily:"'DM Mono',monospace"}}>{fmtShift(offer.offeredShift)}</div>
+                      </div>
+                      <DiffBadge shiftA={req.requesterShift} shiftB={offer.offeredShift} />
+                      {isOwn&&<button onClick={()=>onRespond("accept",req.id,offer)} style={{background:P.tropicalRain,color:"#fff",border:"none",borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:800,cursor:"pointer",flexShrink:0}}>Accept</button>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {!isOwn&&!alreadyOffered&&req.type==="SWAP"&&myShift&&(
+            <div style={{background:"#fff",borderRadius:10,padding:"12px 14px",border:`2px solid ${P.airplaneView}`,display:"flex",alignItems:"center",gap:12}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:11,color:P.softInk,marginBottom:2}}>Your {req.day} shift</div>
+                <div style={{fontWeight:900,fontSize:14,fontFamily:"'DM Mono',monospace",color:P.ink}}>{fmtShift(myShift)}</div>
+                <div style={{marginTop:4}}><DiffBadge shiftA={req.requesterShift} shiftB={myShift} /></div>
+              </div>
+              <button onClick={()=>onRespond("offer",req.id,{offererId:currentUser.id,offeredShift:myShift})} style={{background:P.tropicalRain,color:"#fff",border:"none",borderRadius:10,padding:"10px 14px",fontSize:12,fontWeight:800,cursor:"pointer",flexShrink:0}}>
+                Offer Swap
+              </button>
+            </div>
+          )}
+
+          {!isOwn&&!alreadyOffered&&req.type==="COVER"&&myShift&&(
+            <button onClick={()=>onRespond("cover",req.id,{offererId:currentUser.id,offeredShift:req.requesterShift})} style={{background:P.tomatoJam,color:"#fff",border:"none",borderRadius:10,padding:"12px",fontSize:13,fontWeight:800,cursor:"pointer",width:"100%"}}>
+              I'll Take This Shift · {fmtShift(req.requesterShift)}
+            </button>
+          )}
+
+          {alreadyOffered&&<div style={{background:`${P.limeade}30`,borderRadius:9,padding:"10px 14px",color:P.monetPonds,fontSize:13,fontWeight:800,textAlign:"center"}}>✓ You've responded</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── FIND COVERAGE ─────────────────────────────────────────────────────────────
+function FindScreen({ team, currentUser, onCreateRequest }) {
+  const [selDay,  setSelDay]  = useState(null);
+  const [selType, setSelType] = useState(null);
+  const [note,    setNote]    = useState("");
+  const [posted,  setPosted]  = useState(false);
+
+  const myShift = selDay ? currentUser.schedule[selDay] : null;
+  const myHrs   = shiftHours(myShift);
+
+  const suggestions = (selDay && selType) ? team.filter(m=>{
+    if(m.id===currentUser.id) return false;
+    const s=m.schedule[selDay];
+    return selType==="COVER" ? !s : !!s;
+  }).map(m=>{
+    const roleMatch = m.role===currentUser.role;
+    const optMatch  = isOptician(currentUser.role) ? isOptician(m.role) : true;
+    return {...m, theirShift:m.schedule[selDay], score:(roleMatch?2:0)+(optMatch?1:0), roleMatch, optMatch};
+  }).sort((a,b)=>b.score-a.score) : [];
+
+  const handlePost = () => {
+    onCreateRequest({day:selDay,type:selType,note,requesterShift:myShift});
+    setPosted(true);
+  };
+
+  if(posted) return (
+    <div style={{padding:"48px 24px",textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+      <div style={{fontSize:52}}>🎉</div>
+      <div style={{fontWeight:900,fontSize:22,color:P.ink}}>Request Posted!</div>
+      <div style={{fontSize:13,color:P.softInk,lineHeight:1.6}}>Your team will see it in the Requests tab. We'll let you know when someone responds.</div>
+      <button onClick={()=>{setPosted(false);setSelDay(null);setSelType(null);setNote("");}} style={{marginTop:8,background:P.tropicalRain,color:"#fff",border:"none",borderRadius:12,padding:"12px 28px",fontSize:14,fontWeight:800,cursor:"pointer"}}>Find Another</button>
+    </div>
+  );
+
+  return (
+    <div style={{padding:"20px 16px",display:"flex",flexDirection:"column",gap:22}}>
+      <div>
+        <div style={{fontWeight:900,fontSize:21,color:P.ink}}>Find Coverage</div>
+        <div style={{fontSize:13,color:P.softInk,marginTop:3}}>Pick a shift — we'll show who can help.</div>
+      </div>
+
+      {/* Step 1 */}
+      <section>
+        <SectionLabel>1 · Pick a Day</SectionLabel>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
+          {DAYS.map(day=>{
+            const shift=currentUser.schedule[day];
+            const active=selDay===day;
+            return (
+              <div key={day} onClick={()=>{if(!shift) return; setSelDay(day); setSelType(null);}}
+                style={{borderRadius:12,overflow:"hidden",cursor:shift?"pointer":"default",opacity:shift?1:.38,border:`2.5px solid ${active?P.tomatoJam:P.cream}`,boxShadow:active?`0 0 0 3px ${P.tomatoJam}30`:"none",transition:"all .15s"}}>
+                <div style={{background:active?P.tomatoJam:shift?P.ink:P.autumnLavender,color:"#fff",padding:"5px 2px",textAlign:"center",fontSize:9,fontWeight:800,fontFamily:"'DM Mono',monospace"}}>{day}</div>
+                <div style={{background:"#fff",padding:"7px 2px",textAlign:"center"}}>
+                  {shift
+                    ?<>
+                      <div style={{fontSize:14,fontWeight:900,color:active?P.tomatoJam:P.ink,lineHeight:1}}>{shiftHours(shift)}h</div>
+                      <div style={{fontSize:7.5,color:P.softInk,fontFamily:"'DM Mono',monospace",lineHeight:1.35,marginTop:2}}>{fmt12(shift.split("-")[0])}<br/>{fmt12(shift.split("-")[1])}</div>
+                    </>
+                    :<div style={{fontSize:9,color:"#ccc",padding:"5px 0"}}>OFF</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {selDay&&!myShift&&<div style={{marginTop:8,fontSize:12,color:P.softInk,background:`${P.autumnLavender}40`,borderRadius:8,padding:"8px 12px"}}>You're already off on {selDay}. Pick a day you're scheduled.</div>}
+      </section>
+
+      {/* Step 2 */}
+      {selDay&&myShift&&(
+        <section>
+          <SectionLabel>2 · What Do You Need?</SectionLabel>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:8}}>
+            {[
+              {key:"SWAP", icon:"🔄", label:"Shift Swap", desc:"Trade shifts same day"},
+              {key:"COVER",icon:"🙋", label:"Full Cover",  desc:"Need the whole day off"},
+            ].map(opt=>(
+              <div key={opt.key} onClick={()=>setSelType(opt.key)} style={{border:`2.5px solid ${selType===opt.key?P.tomatoJam:P.cream}`,borderRadius:14,padding:"16px 14px",cursor:"pointer",background:selType===opt.key?`${P.tomatoJam}10`:"#fff",boxShadow:selType===opt.key?`0 0 0 2px ${P.tomatoJam}25`:"none",transition:"all .15s"}}>
+                <div style={{fontSize:24,marginBottom:8}}>{opt.icon}</div>
+                <div style={{fontWeight:900,fontSize:13,color:P.ink}}>{opt.label}</div>
+                <div style={{fontSize:11,color:P.softInk,marginTop:3,lineHeight:1.4}}>{opt.desc}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Step 3 – Suggestions */}
+      {selDay&&myShift&&selType&&(
+        <section>
+          <SectionLabel>3 · Who Could Help?</SectionLabel>
+          {suggestions.length===0
+            ?<EmptyState icon="🌾"
+               text={selType==="COVER"
+                 ?"No teammates are off that day — everyone's scheduled."
+                 :"No teammates are working that day to swap with."} />
+            :<div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {suggestions.map(m=>(
+                <div key={m.id} style={{background:"#fff",borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 2px 12px rgba(43,33,24,.08)",border:`2px solid ${m.score>=3?P.limeade:m.score>=2?P.airplaneView:P.cream}`}}>
+                  <Avatar initials={m.avatar} roleKey={m.role} />
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:3}}>
+                      <span style={{fontWeight:900,fontSize:14,color:P.ink}}>{m.name}</span>
+                      <RolePill roleKey={m.role} />
+                      {m.roleMatch&&<span style={{fontSize:8,background:`${P.limeade}50`,color:P.monetPonds,padding:"2px 6px",borderRadius:5,fontWeight:800,fontFamily:"'DM Mono',monospace"}}>SAME ROLE</span>}
+                    </div>
+                    <div style={{fontSize:12,color:P.softInk}}>
+                      {selType==="COVER"
+                        ?<>Off on {selDay} · <strong style={{color:P.tropicalRain}}>Available to cover</strong></>
+                        :fmtShift(m.theirShift) + " on " + selDay}
+                    </div>
+                  </div>
+                  {selType==="SWAP"&&m.theirShift&&<DiffBadge shiftA={myShift} shiftB={m.theirShift} />}
+                  {selType==="COVER"&&<span style={{fontSize:22,flexShrink:0}}>✓</span>}
+                </div>
+              ))}
+            </div>}
+
+          {/* Optician warning */}
+          {isOptician(currentUser.role)&&selType==="SWAP"&&suggestions.length>0&&!suggestions.some(s=>isOptician(s.role))&&(
+            <div style={{background:`${P.pureSun}30`,borderRadius:10,padding:"12px 14px",marginTop:8,fontSize:12,color:"#8B6914",lineHeight:1.5}}>
+              ⚠ <strong>Coverage alert:</strong> No optician-eligible teammate available. Make sure floor coverage stays compliant before posting.
+            </div>
+          )}
+
+          {suggestions.length>0&&(
+            <>
+              <div style={{marginTop:14}}>
+                <SectionLabel small>4 · Note (Optional)</SectionLabel>
+                <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="e.g. Doctor's appointment, family event..."
+                  style={{width:"100%",border:`1.5px solid ${P.cream}`,borderRadius:10,padding:"10px 12px",fontSize:13,fontFamily:"'Nunito',sans-serif",resize:"none",outline:"none",background:"#fafafa",boxSizing:"border-box",height:68,marginTop:6}} />
+              </div>
+              <button onClick={handlePost} style={{background:P.tropicalRain,color:"#fff",border:"none",borderRadius:12,padding:"14px",fontSize:15,fontWeight:900,cursor:"pointer",width:"100%",marginTop:4}}>
+                Post Request to Team
+              </button>
+            </>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+// ─── SCHEDULE ─────────────────────────────────────────────────────────────────
+function ScheduleScreen({ team, currentUser, onCreateRequest }) {
+  const [showModal,setShowModal]=useState(false);
+  const [selDay,setSelDay]=useState(null);
+  const [reqType,setReqType]=useState(null);
+  const [note,setNote]=useState("");
+
+  const openDay=(day)=>{ if(!currentUser.schedule[day]) return; setSelDay(day); setShowModal(true); };
+  const submit=()=>{ if(!reqType) return; onCreateRequest({day:selDay,type:reqType,note,requesterShift:currentUser.schedule[selDay]}); setShowModal(false); setNote(""); setReqType(null); };
+
+  return (
+    <div style={{padding:"20px 16px",display:"flex",flexDirection:"column",gap:22}}>
+      {/* My week */}
+      <section>
+        <SectionLabel>My Week · Tap to Request</SectionLabel>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
+          {DAYS.map(day=>{
+            const shift=currentUser.schedule[day];
+            const hrs=shiftHours(shift);
+            return (
+              <div key={day} onClick={()=>openDay(day)} style={{borderRadius:12,overflow:"hidden",cursor:shift?"pointer":"default",border:`2px solid ${shift?P.airplaneView:P.cream}`,boxShadow:shift?"0 2px 10px rgba(43,33,24,.07)":"none"}}>
+                <div style={{background:shift?P.tropicalRain:P.autumnLavender,color:"#fff",padding:"5px 2px",textAlign:"center",fontSize:9,fontWeight:800,fontFamily:"'DM Mono',monospace"}}>{day}</div>
+                <div style={{background:"#fff",padding:"8px 2px",textAlign:"center"}}>
+                  {shift
+                    ?<>
+                      <div style={{fontSize:16,fontWeight:900,color:P.tomatoJam}}>{hrs}h</div>
+                      <div style={{fontSize:7.5,color:P.softInk,fontFamily:"'DM Mono',monospace",lineHeight:1.4,marginTop:2}}>{fmt12(shift.split("-")[0])}<br/>{fmt12(shift.split("-")[1])}</div>
+                    </>
+                    :<div style={{fontSize:9,color:"#ccc",padding:"5px 0"}}>OFF</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Full team */}
+      <section>
+        <SectionLabel>Full Team Schedule</SectionLabel>
+        <div style={{background:"#fff",borderRadius:16,overflow:"hidden",boxShadow:"0 2px 14px rgba(43,33,24,.08)"}}>
+          <div style={{display:"grid",gridTemplateColumns:"80px repeat(7,1fr)",background:P.ink}}>
+            <div style={{padding:"8px 10px",fontSize:9,color:"rgba(255,255,255,.85)",fontWeight:800,fontFamily:"'DM Mono',monospace"}}>NAME</div>
+            {DAYS.map(d=><div key={d} style={{padding:"8px 2px",textAlign:"center",fontSize:9,fontWeight:800,color:"#fff",fontFamily:"'DM Mono',monospace"}}>{d}</div>)}
+          </div>
+          {team.map((member,i)=>{
+            const r=ROLES[member.role]||ROLES.SALES_ADVISOR;
+            const isMe=member.isCurrentUser;
+            return (
+              <div key={member.id} style={{display:"grid",gridTemplateColumns:"80px repeat(7,1fr)",background:isMe?`${P.pureSun}18`:i%2===0?`${P.cream}55`:"#fff",borderBottom:`1px solid ${P.cream}`}}>
+                <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",justifyContent:"center",gap:4,borderLeft:isMe?`3px solid ${P.pureSun}`:"3px solid transparent"}}>
+                  <div style={{fontSize:12,fontWeight:900,color:P.ink,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.1}}>{member.name.split(" ")[0]}{isMe?" ★":""}</div>
+                  <div style={{display:"inline-flex"}}><RolePill roleKey={member.role} mini /></div>
+                </div>
+                {DAYS.map(day=>{
+                  const s=member.schedule[day];
+                  return (
+                    <div key={day} style={{padding:"4px 2px",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {s
+                        ?<div style={{background:`${r.bg}22`,borderRadius:5,padding:"3px 3px",textAlign:"center",width:"100%"}}>
+                          <div style={{fontSize:8,fontWeight:700,color:r.bg===P.peonyBundle?P.tomatoJam:r.bg,fontFamily:"'DM Mono',monospace",lineHeight:1.35}}>
+                            {fmt12(s.split("-")[0])}<br/>{fmt12(s.split("-")[1])}
+                          </div>
+                        </div>
+                        :<div style={{fontSize:9,color:`${P.cream}`,fontFamily:"'DM Mono',monospace",textAlign:"center"}}>–</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Request modal */}
+      {showModal&&(
+        <BottomSheet onClose={()=>setShowModal(false)}>
+          <div style={{fontWeight:900,fontSize:19,color:P.ink,marginBottom:3}}>{selDay}</div>
+          <div style={{fontSize:13,color:P.softInk,fontFamily:"'DM Mono',monospace",marginBottom:20}}>{fmtShift(currentUser.schedule[selDay])} · {shiftHours(currentUser.schedule[selDay])}h</div>
+          <SectionLabel small>Request Type</SectionLabel>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:8,marginBottom:18}}>
+            {[{key:"SWAP",icon:"🔄",label:"Shift Swap",desc:"Trade for another shift"},{key:"COVER",icon:"🙋",label:"Full Cover",desc:"Need the whole day off"}].map(opt=>(
+              <div key={opt.key} onClick={()=>setReqType(opt.key)} style={{border:`2.5px solid ${reqType===opt.key?P.tomatoJam:P.cream}`,borderRadius:12,padding:"14px 12px",cursor:"pointer",background:reqType===opt.key?`${P.tomatoJam}10`:"#fafafa",transition:"all .15s"}}>
+                <div style={{fontSize:22,marginBottom:6}}>{opt.icon}</div>
+                <div style={{fontWeight:900,fontSize:13,color:P.ink}}>{opt.label}</div>
+                <div style={{fontSize:11,color:P.softInk,marginTop:3}}>{opt.desc}</div>
+              </div>
+            ))}
+          </div>
+          <SectionLabel small>Note (Optional)</SectionLabel>
+          <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="e.g. Doctor's appointment…"
+            style={{width:"100%",border:`1.5px solid ${P.cream}`,borderRadius:10,padding:"10px 12px",fontSize:13,fontFamily:"'Nunito',sans-serif",resize:"none",outline:"none",background:"#fafafa",boxSizing:"border-box",height:68,marginTop:6}} />
+          <button onClick={submit} disabled={!reqType} style={{width:"100%",marginTop:14,padding:"14px",background:reqType?P.tropicalRain:"#e0e0e0",color:reqType?"#fff":"#aaa",border:"none",borderRadius:12,fontSize:15,fontWeight:900,cursor:reqType?"pointer":"default"}}>
+            Post Request
+          </button>
+        </BottomSheet>
+      )}
+    </div>
+  );
+}
+
+// ─── UPLOAD ───────────────────────────────────────────────────────────────────
+async function parseScheduleImage(base64, mediaType) {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000, messages:[{role:"user",content:[
+      {type:"image",source:{type:"base64",media_type:mediaType,data:base64}},
+      {type:"text",text:`Extract the weekly schedule. Return ONLY a JSON array, no markdown.\nFormat: [{"name":"Full Name","Mon":"HH:MM-HH:MM or null","Tue":"...","Wed":"...","Thu":"...","Fri":"...","Sat":"...","Sun":"..."}]\nUse 24h time (09:00-17:00). null for days off.`}
+    ]}]})
+  });
+  const data = await res.json();
+  const text = data.content?.map(b=>b.text||"").join("")||"";
+  return JSON.parse(text.replace(/```json|```/g,"").trim());
+}
+
+function UploadScreen({ team, setTeam }) {
+  const [loading,setLoading]=useState(false);
+  const [parsed,setParsed]=useState(null);
+  const [error,setError]=useState(null);
+  const [matchMap,setMatchMap]=useState({});
+  const [applied,setApplied]=useState(false);
+  const fileRef=useRef();
+
+  const handleFile=async(e)=>{
+    const file=e.target.files[0]; if(!file) return;
+    setError(null); setLoading(true); setParsed(null); setApplied(false);
+    try {
+      const b64=await new Promise((res,rej)=>{const r=new FileReader(); r.onload=()=>res(r.result.split(",")[1]); r.onerror=rej; r.readAsDataURL(file);});
+      const result=await parseScheduleImage(b64,file.type);
+      setParsed(result);
+      const map={};
+      result.forEach((row,i)=>{ const m=team.find(t=>t.name.toLowerCase().includes(row.name.split(" ")[0].toLowerCase())); map[i]=m?.id||""; });
+      setMatchMap(map);
+    } catch(err){ setError("Couldn't read the schedule. Try a clearer photo or screenshot."); }
+    finally{ setLoading(false); }
+  };
+
+  const apply=()=>{
+    const updated=team.map(m=>({...m}));
+    parsed.forEach((row,i)=>{const tid=matchMap[i]; if(!tid) return; const m=updated.find(x=>x.id===Number(tid)); if(m) m.schedule={Mon:row.Mon,Tue:row.Tue,Wed:row.Wed,Thu:row.Thu,Fri:row.Fri,Sat:row.Sat,Sun:row.Sun};});
+    setTeam(updated); setParsed(null); setApplied(true);
+  };
+
+  return (
+    <div style={{padding:"20px 16px",display:"flex",flexDirection:"column",gap:22}}>
+      <div>
+        <div style={{fontWeight:900,fontSize:21,color:P.ink}}>Upload Schedule</div>
+        <div style={{fontSize:13,color:P.softInk,marginTop:3}}>Photo or screenshot — AI will extract everyone's shifts.</div>
+      </div>
+
+      {applied&&<div style={{background:`${P.limeade}35`,borderRadius:12,padding:"14px 16px",color:P.monetPonds,fontSize:13,fontWeight:800}}>✓ Schedule applied to your team!</div>}
+
+      <div onClick={()=>fileRef.current?.click()} style={{border:`2.5px dashed ${P.airplaneView}`,borderRadius:18,padding:"38px 24px",textAlign:"center",cursor:"pointer",background:`${P.airplaneView}12`}}>
+        <div style={{fontSize:36,marginBottom:12}}>📅</div>
+        <div style={{fontWeight:900,fontSize:15,color:P.ink,marginBottom:6}}>Tap to upload schedule image</div>
+        <div style={{fontSize:12,color:P.softInk}}>PNG · JPG · HEIC</div>
+        <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFile} />
+      </div>
+
+      {loading&&<div style={{textAlign:"center",padding:"20px",color:P.tropicalRain}}><div style={{fontSize:26,marginBottom:8}}>⏳</div><div style={{fontWeight:700}}>Reading schedule with AI…</div></div>}
+      {error&&<div style={{background:`${P.peonyBundle}55`,borderRadius:12,padding:"14px 16px",color:P.tomatoJam,fontSize:13}}>⚠ {error}</div>}
+
+      {parsed&&(
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <SectionLabel>Match to Team Members</SectionLabel>
+          {parsed.map((row,i)=>(
+            <div key={i} style={{background:"#fff",borderRadius:14,padding:"14px 16px",boxShadow:"0 2px 10px rgba(43,33,24,.07)",border:`1.5px solid ${P.cream}`}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                <div style={{fontWeight:900,flex:1,fontSize:14,color:P.ink}}>{row.name}</div>
+                <select value={matchMap[i]} onChange={e=>setMatchMap({...matchMap,[i]:e.target.value})} style={{border:`1.5px solid ${P.cream}`,borderRadius:8,padding:"5px 8px",fontSize:12,background:"#fafafa",maxWidth:140,fontFamily:"'Nunito',sans-serif"}}>
+                  <option value="">-- Skip --</option>
+                  {team.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                {DAYS.map(d=>(
+                  <div key={d} style={{background:row[d]?`${P.tropicalRain}18`:P.cream,borderRadius:6,padding:"3px 7px",fontSize:9,fontFamily:"'DM Mono',monospace",color:row[d]?P.tropicalRain:P.softInk}}>
+                    {d}: {row[d]?fmtShift(row[d]):"OFF"}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          <button onClick={apply} style={{background:P.tropicalRain,color:"#fff",border:"none",borderRadius:12,padding:"14px",fontSize:15,fontWeight:900,cursor:"pointer"}}>Apply Schedules ✓</button>
+        </div>
+      )}
+
+      <section>
+        <SectionLabel>Role Color Guide</SectionLabel>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {Object.entries(ROLES).map(([key,r])=>(
+            <div key={key} style={{display:"flex",alignItems:"center",gap:12,background:"#fff",borderRadius:12,padding:"10px 14px",boxShadow:"0 1px 6px rgba(43,33,24,.06)"}}>
+              <div style={{width:28,height:28,borderRadius:7,background:r.bg,flexShrink:0}} />
+              <div style={{flex:1,fontWeight:800,fontSize:13,color:P.ink}}>{r.label}</div>
+              {r.secondary&&<span style={{fontSize:10,color:P.softInk,fontFamily:"'DM Mono',monospace"}}>+ {r.secondary}</span>}
+            </div>
+          ))}
+        </div>
+        <div style={{marginTop:12,background:`${P.pureSun}28`,borderRadius:10,padding:"12px 14px",fontSize:12,color:"#7D6608",lineHeight:1.6}}>
+          ⚠ <strong>Coverage rule:</strong> Always keep an Optician on the floor. Store Lead, Asst. Lead &amp; Optical Supervisor can cover as opticians for no more than 1 hour.
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// ─── TEAM ─────────────────────────────────────────────────────────────────────
+function TeamScreen({ team, currentUser, setTeam }) {
+  const [editId,setEditId]=useState(null);
+  const updateRole=(id,role)=>{ setTeam(prev=>prev.map(m=>m.id===id?{...m,role}:m)); setEditId(null); };
+  const me=team.find(m=>m.id===currentUser.id);
+
+  return (
+    <div style={{padding:"20px 16px",display:"flex",flexDirection:"column",gap:22}}>
+      <div style={{background:P.tropicalRain,borderRadius:20,padding:"24px 22px",color:"#fff"}}>
+        <Avatar initials={me.avatar} roleKey={me.role} size={54} />
+        <div style={{marginTop:14,fontWeight:900,fontSize:22}}>{me.name}</div>
+        <div style={{fontSize:13,opacity:.8,marginTop:3}}>{ROLES[me.role].label}</div>
+        {ROLES[me.role].secondary&&<div style={{fontSize:11,opacity:.6,marginTop:2}}>+ {ROLES[me.role].secondary}</div>}
+      </div>
+
+      <section>
+        <SectionLabel>Team Roles</SectionLabel>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {team.map(member=>(
+            <div key={member.id} style={{background:"#fff",borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 1px 8px rgba(43,33,24,.06)"}}>
+              <Avatar initials={member.avatar} roleKey={member.role} />
+              <div style={{flex:1}}>
+                <div style={{fontWeight:900,fontSize:14,color:P.ink}}>{member.name}</div>
+                <div style={{marginTop:3}}><RolePill roleKey={member.role} /></div>
+              </div>
+              <button onClick={()=>setEditId(member.id)} style={{background:P.cream,border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:800,cursor:"pointer",color:P.softInk}}>Edit</button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {editId&&(()=>{
+        const m=team.find(x=>x.id===editId);
+        return (
+          <BottomSheet onClose={()=>setEditId(null)}>
+            <div style={{fontWeight:900,fontSize:17,color:P.ink,marginBottom:16}}>Edit Role · {m.name}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {Object.entries(ROLES).map(([key,r])=>(
+                <div key={key} onClick={()=>updateRole(editId,key)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:10,cursor:"pointer",background:m.role===key?`${r.bg}25`:"#fafafa",border:`2px solid ${m.role===key?r.bg:P.cream}`,transition:"all .15s"}}>
+                  <div style={{width:12,height:12,borderRadius:"50%",background:r.bg,flexShrink:0}} />
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:900,fontSize:14,color:P.ink}}>{r.label}</div>
+                    {r.secondary&&<div style={{fontSize:11,color:P.softInk}}>+ {r.secondary}</div>}
+                  </div>
+                  {m.role===key&&<span style={{color:P.tropicalRain,fontSize:16,fontWeight:900}}>✓</span>}
+                </div>
+              ))}
+            </div>
+          </BottomSheet>
+        );
+      })()}
+    </div>
+  );
+}
+
+// ─── ROOT APP ─────────────────────────────────────────────────────────────────
+export default function ShiftSwapApp() {
+  const [team,     setTeam]     = useState(SAMPLE_TEAM);
+  const [requests, setRequests] = useState(SAMPLE_REQUESTS);
+  const [tab,      setTab]      = useState("home");
+
+  const currentUser  = team.find(m=>m.isCurrentUser);
+  const pendingCount = requests.filter(r=>r.requesterId!==currentUser.id&&!r.status).length;
+
+  const handleRespond=(action,reqId,payload)=>{
+    setRequests(prev=>prev.map(r=>{
+      if(r.id!==reqId) return r;
+      if(action==="offer"||action==="cover") return {...r,offers:[...(r.offers||[]),payload]};
+      if(action==="accept") return {...r,status:"accepted"};
+      return r;
+    }));
+  };
+
+  const handleCreateRequest=({day,type,note,requesterShift})=>{
+    setRequests(prev=>[{id:Date.now(),requesterId:currentUser.id,type,day,requesterShift,note,offers:[],status:null},...prev]);
+    setTab("home");
+  };
+
+  const tabs=[
+    {key:"home",  icon:"🏠", label:"Requests"},
+    {key:"find",  icon:"🔍", label:"Find"},
+    {key:"sched", icon:"📅", label:"Schedule"},
+    {key:"upload",icon:"📷", label:"Upload"},
+    {key:"team",  icon:"👤", label:"Team"},
+  ];
+
+  return (
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Nunito:wght@400;600;700;800;900&display=swap');
+        *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+        body{margin:0;background:${P.cream};}
+        textarea,select,input,button{font-family:'Nunito',sans-serif;}
+        @keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+        .screen{animation:slideUp .2s ease;}
+      `}</style>
+      <div style={{maxWidth:480,margin:"0 auto",height:"100dvh",display:"flex",flexDirection:"column",background:P.cream,fontFamily:"'Nunito',sans-serif",position:"relative",overflow:"hidden"}}>
+        {/* Header */}
+        <div style={{background:P.cream,padding:"14px 18px 12px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+          <div style={{width:36,height:36,borderRadius:10,background:P.tropicalRain,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🔄</div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:900,fontSize:16,color:P.ink}}>ShiftSwap</div>
+            <div style={{fontSize:10,color:P.softInk,fontFamily:"'DM Mono',monospace"}}>Washington Square · WP</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {pendingCount>0&&<div style={{background:P.tomatoJam,color:"#fff",borderRadius:"50%",width:20,height:20,fontSize:11,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center"}}>{pendingCount}</div>}
+            <Avatar initials={currentUser.avatar} roleKey={currentUser.role} size={34} />
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="screen" key={tab} style={{flex:1,overflowY:"auto",paddingBottom:72}}>
+          {tab==="home"  &&<HomeScreen     team={team} requests={requests} currentUser={currentUser} onRespond={handleRespond} />}
+          {tab==="find"  &&<FindScreen     team={team} currentUser={currentUser} onCreateRequest={handleCreateRequest} />}
+          {tab==="sched" &&<ScheduleScreen team={team} currentUser={currentUser} onCreateRequest={handleCreateRequest} />}
+          {tab==="upload"&&<UploadScreen   team={team} setTeam={setTeam} />}
+          {tab==="team"  &&<TeamScreen     team={team} currentUser={currentUser} setTeam={setTeam} />}
+        </div>
+
+        {/* Nav */}
+        <div style={{position:"absolute",bottom:0,left:0,right:0,background:"#fff",borderTop:`1.5px solid ${P.cream}`,display:"grid",gridTemplateColumns:"repeat(5,1fr)",paddingBottom:"env(safe-area-inset-bottom,0)"}}>
+          {tabs.map(t=>(
+            <button key={t.key} onClick={()=>setTab(t.key)} style={{background:"none",border:"none",padding:"9px 2px 11px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,position:"relative",color:tab===t.key?P.tropicalRain:P.softInk}}>
+              {t.key==="home"&&pendingCount>0&&<div style={{position:"absolute",top:6,right:"calc(50% - 14px)",background:P.tomatoJam,borderRadius:"50%",width:8,height:8}} />}
+              <span style={{fontSize:18}}>{t.icon}</span>
+              <span style={{fontSize:9,fontWeight:tab===t.key?900:600,fontFamily:"'DM Mono',monospace",letterSpacing:".04em"}}>{t.label}</span>
+              {tab===t.key&&<div style={{position:"absolute",bottom:0,left:"20%",right:"20%",height:2.5,background:P.tropicalRain,borderRadius:2}} />}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
