@@ -1,4 +1,42 @@
-import { useState, useRef } from "react";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>ShiftSwap</title>
+
+  <!-- PWA / Add to Home Screen -->
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="ShiftSwap" />
+  <meta name="theme-color" content="#008471" />
+
+  <!-- Home screen icon (SVG encoded inline) -->
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%23008471'/%3E%3Ctext x='90' y='115' font-size='90' text-anchor='middle'%3E%F0%9F%94%84%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23008471'/%3E%3Ctext x='16' y='22' font-size='18' text-anchor='middle'%3E%F0%9F%94%84%3C/text%3E%3C/svg%3E" />
+
+  <!-- Inline Web App Manifest -->
+  <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22ShiftSwap%22%2C%22short_name%22%3A%22ShiftSwap%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23F5F0E8%22%2C%22theme_color%22%3A%22%23008471%22%2C%22orientation%22%3A%22portrait%22%7D" />
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body, #root { height: 100%; width: 100%; overflow: hidden; }
+    body { background: #F5F0E8; font-family: sans-serif; }
+    textarea, select, input, button { font-family: sans-serif; }
+  </style>
+
+  <!-- React + Babel via CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useRef } = React;
+
 
 const P = {
   airplaneView:   "#80B0E8",
@@ -715,7 +753,7 @@ function TeamScreen({ team, currentUser, setTeam }) {
   );
 }
 
-export default function ShiftSwapApp() {
+function ShiftSwapApp() {
   const [team,     setTeam]     = useState(INIT_TEAM);
   const [requests, setRequests] = useState(INIT_REQUESTS);
   const [tab,      setTab]      = useState("home");
@@ -792,3 +830,11 @@ export default function ShiftSwapApp() {
     </div>
   );
 }
+
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(ShiftSwapApp));
+
+  </script>
+</body>
+</html>
