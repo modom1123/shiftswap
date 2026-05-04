@@ -1,4 +1,58 @@
-import { useState, useRef } from "react";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>ShiftSwap</title>
+
+  <!-- PWA / Add to Home Screen -->
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="ShiftSwap" />
+  <meta name="theme-color" content="#008471" />
+
+  <!-- Home screen icon (SVG encoded inline) -->
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%23008471'/%3E%3Ctext x='90' y='115' font-size='90' text-anchor='middle'%3E%F0%9F%94%84%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23008471'/%3E%3Ctext x='16' y='22' font-size='18' text-anchor='middle'%3E%F0%9F%94%84%3C/text%3E%3C/svg%3E" />
+
+  <!-- Inline Web App Manifest -->
+  <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22ShiftSwap%22%2C%22short_name%22%3A%22ShiftSwap%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23F5F0E8%22%2C%22theme_color%22%3A%22%23008471%22%2C%22orientation%22%3A%22portrait%22%7D" />
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body, #root { height: 100%; width: 100%; overflow: hidden; }
+    body { background: #F5F0E8; font-family: sans-serif; }
+    textarea, select, input, button { font-family: sans-serif; }
+  </style>
+
+  <!-- React + Babel via CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <script>
+    var firebaseConfig = {
+      apiKey: "AIzaSyCo3oiIwjBFt1z7k2svKgGUwcH1UqB2tfo",
+      authDomain: "shiftswap-134f6.firebaseapp.com",
+      databaseURL: "https://shiftswap-134f6-default-rtdb.firebaseio.com",
+      projectId: "shiftswap-134f6",
+      storageBucket: "shiftswap-134f6.firebasestorage.app",
+      messagingSenderId: "406956417846",
+      appId: "1:406956417846:web:ebcfa574bdd7bc84514997"
+    };
+    firebase.initializeApp(firebaseConfig);
+    var db = firebase.database();
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useRef } = React;
+
 
 const P = {
   airplaneView:   "#80B0E8",
@@ -497,147 +551,273 @@ function ScheduleScreen({ team, currentUser, onCreateRequest }) {
   );
 }
 
-async function parseImage(base64, mediaType) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+
+/* ── ScheduleEditor: manual schedule entry, no API needed ── */
+var HOUR_OPTIONS = [];
+for (var _h = 6; _h <= 23; _h++) {
+  var _ap = _h >= 12 ? "pm" : "am";
+  var _hr = _h % 12 || 12;
+  HOUR_OPTIONS.push({ val: _h + ":00", label: _hr + ":00" + _ap });
+  HOUR_OPTIONS.push({ val: _h + ":30", label: _hr + ":30" + _ap });
+}
+
+function ShiftEditor({ value, onChange, onClear }) {
+  var parts = value ? value.split("-") : ["9:00","17:00"];
+  var startVal = value ? parts[0] : "";
+  var endVal   = value ? parts[1] : "";
+
+  function handleStart(e) {
+    var s = e.target.value;
+    var end = endVal || "17:00";
+    if (parseTime(end) <= parseTime(s)) {
+      var idx = HOUR_OPTIONS.findIndex(function(o){ return o.val === s; });
+      end = idx < HOUR_OPTIONS.length - 1 ? HOUR_OPTIONS[idx+2].val : end;
+    }
+    onChange(s + "-" + end);
+  }
+  function handleEnd(e) {
+    var end = e.target.value;
+    var start = startVal || "9:00";
+    if (parseTime(end) <= parseTime(start)) return;
+    onChange(start + "-" + end);
+  }
+
+  var selStyle = {border:"1.5px solid " + P.cream, borderRadius:8, padding:"7px 6px", fontSize:12, background:"#fafafa", color:P.ink, outline:"none", flex:1};
+
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
+      <select value={startVal} onChange={handleStart} style={selStyle}>
+        <option value="">start</option>
+        {HOUR_OPTIONS.slice(0, HOUR_OPTIONS.length-2).map(function(o){
+          return <option key={o.val} value={o.val}>{o.label}</option>;
+        })}
+      </select>
+      <span style={{color:P.softInk,fontSize:11,flexShrink:0}}>to</span>
+      <select value={endVal} onChange={handleEnd} style={selStyle}>
+        <option value="">end</option>
+        {HOUR_OPTIONS.slice(2).map(function(o){
+          return <option key={o.val} value={o.val}>{o.label}</option>;
+        })}
+      </select>
+      {value && (
+        <button onClick={onClear} style={{background:P.peonyBundle+"88",border:"none",borderRadius:7,padding:"7px 9px",fontSize:12,cursor:"pointer",color:P.tomatoJam,fontWeight:800,flexShrink:0}}>
+          Off
+        </button>
+      )}
+    </div>
+  );
+}
+
+async function parseImage(base64, mediaType, apiKey) {
+  var res = await fetch("https://api.anthropic.com/v1/messages", {
     method:"POST",
-    headers:{"Content-Type":"application/json"},
+    headers:{
+      "Content-Type":"application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
     body: JSON.stringify({
       model:"claude-sonnet-4-20250514",
       max_tokens:1000,
-      messages:[{
-        role:"user",
-        content:[
-          {type:"image", source:{type:"base64", media_type:mediaType, data:base64}},
-          {type:"text",  text:"Extract the weekly schedule. Return ONLY a JSON array, no markdown. Format: [{\"name\":\"Full Name\",\"Mon\":\"HH:MM-HH:MM or null\",\"Tue\":\"...\",\"Wed\":\"...\",\"Thu\":\"...\",\"Fri\":\"...\",\"Sat\":\"...\",\"Sun\":\"...\"}] Use 24h time. null for days off."},
-        ],
-      }],
+      messages:[{role:"user",content:[
+        {type:"image", source:{type:"base64",media_type:mediaType,data:base64}},
+        {type:"text",  text:"Extract the weekly schedule. Return ONLY a JSON array, no markdown. Format: [{\"name\":\"Full Name\",\"Mon\":\"HH:MM-HH:MM or null\",\"Tue\":\"...\",\"Wed\":\"...\",\"Thu\":\"...\",\"Fri\":\"...\",\"Sat\":\"...\",\"Sun\":\"...\"}] Use 24h time. null for days off."},
+      ]}],
     }),
   });
-  const data = await res.json();
-  const text = data.content ? data.content.map(function(b){ return b.text || ""; }).join("") : "";
+  if (!res.ok) {
+    var err = await res.json().catch(function(){ return {}; });
+    throw new Error((err.error && err.error.message) || ("API error " + res.status));
+  }
+  var data = await res.json();
+  var text = data.content ? data.content.map(function(b){ return b.text || ""; }).join("") : "";
   return JSON.parse(text.replace(/```json|```/g, "").trim());
 }
 
 function UploadScreen({ team, setTeam }) {
-  const [loading,  setLoading]  = useState(false);
-  const [parsed,   setParsed]   = useState(null);
-  const [error,    setError]    = useState(null);
-  const [matchMap, setMatchMap] = useState({});
-  const [applied,  setApplied]  = useState(false);
+  var initDraft = {};
+  team.forEach(function(m){ initDraft[m.id] = Object.assign({}, m.schedule); });
+
+  const [draft,     setDraft]     = useState(initDraft);
+  const [saved,     setSaved]     = useState(false);
+  const [openId,    setOpenId]    = useState(null);
+  const [apiKey,    setApiKey]    = useState(function(){ return localStorage.getItem("ss_api_key") || ""; });
+  const [showKey,   setShowKey]   = useState(false);
+  const [scanning,  setScanning]  = useState(false);
+  const [scanError, setScanError] = useState(null);
+  const [scanDone,  setScanDone]  = useState(false);
   const fileRef = useRef();
 
+  function saveKey(val) { setApiKey(val); localStorage.setItem("ss_api_key", val); }
+
   function handleFile(e) {
-    const file = e.target.files[0];
+    var file = e.target.files[0];
     if (!file) return;
-    setError(null); setLoading(true); setParsed(null); setApplied(false);
-    const reader = new FileReader();
+    if (!apiKey.trim()) { setScanError("Enter your API key first."); return; }
+    setScanError(null); setScanning(true); setScanDone(false);
+    var reader = new FileReader();
     reader.onload = function() {
-      const b64 = reader.result.split(",")[1];
-      parseImage(b64, file.type)
-        .then(function(result){
-          setParsed(result);
-          const map = {};
-          result.forEach(function(row, i){
-            const m = team.find(function(t){ return t.name.toLowerCase().includes(row.name.split(" ")[0].toLowerCase()); });
-            map[i] = m ? m.id : "";
+      var b64 = reader.result.split(",")[1];
+      parseImage(b64, file.type, apiKey.trim())
+        .then(function(rows){
+          setDraft(function(prev){
+            var next = Object.assign({}, prev);
+            rows.forEach(function(row){
+              var match = team.find(function(m){
+                return m.name.toLowerCase().includes(row.name.split(" ")[0].toLowerCase());
+              });
+              if (match) next[match.id] = {Mon:row.Mon,Tue:row.Tue,Wed:row.Wed,Thu:row.Thu,Fri:row.Fri,Sat:row.Sat,Sun:row.Sun};
+            });
+            return next;
           });
-          setMatchMap(map);
+          setScanDone(true); setSaved(false);
         })
-        .catch(function(){ setError("Couldn't read the schedule. Try a clearer image."); })
-        .finally(function(){ setLoading(false); });
+        .catch(function(err){ setScanError("Error: " + (err.message || "Could not read schedule.")); })
+        .finally(function(){ setScanning(false); });
     };
     reader.readAsDataURL(file);
   }
 
-  function apply() {
-    const updated = team.map(function(m){ return Object.assign({}, m); });
-    parsed.forEach(function(row, i){
-      const tid = matchMap[i];
-      if (!tid) return;
-      const m = updated.find(function(x){ return x.id === Number(tid); });
-      if (m) m.schedule = {Mon:row.Mon, Tue:row.Tue, Wed:row.Wed, Thu:row.Thu, Fri:row.Fri, Sat:row.Sat, Sun:row.Sun};
+  function setShift(memberId, day, val) {
+    setDraft(function(prev){
+      var next = Object.assign({}, prev);
+      next[memberId] = Object.assign({}, next[memberId]);
+      next[memberId][day] = val;
+      return next;
     });
-    setTeam(updated); setParsed(null); setApplied(true);
+    setSaved(false);
+  }
+
+  function clearShift(memberId, day) { setShift(memberId, day, null); }
+
+  function saveAll() {
+    setTeam(function(prev){
+      return prev.map(function(m){ return Object.assign({}, m, {schedule: draft[m.id] || m.schedule}); });
+    });
+    setSaved(true);
   }
 
   return (
-    <div style={{padding:"20px 16px",display:"flex",flexDirection:"column",gap:22}}>
+    <div style={{padding:"20px 16px",display:"flex",flexDirection:"column",gap:20}}>
       <div>
-        <div style={{fontWeight:900,fontSize:21,color:P.ink}}>Upload Schedule</div>
-        <div style={{fontSize:13,color:P.softInk,marginTop:3}}>Photo or screenshot — AI reads the shifts automatically.</div>
+        <div style={{fontWeight:900,fontSize:21,color:P.ink}}>Edit Schedule</div>
+        <div style={{fontSize:13,color:P.softInk,marginTop:3}}>Scan a photo or edit shifts manually below.</div>
       </div>
 
-      {applied && (
-        <div style={{background:P.limeade + "44",borderRadius:12,padding:"14px 16px",color:P.monetPonds,fontSize:13,fontWeight:800}}>
-          Schedule applied!
+      <div style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid "+P.cream,display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{fontSize:11,fontWeight:800,color:P.softInk,letterSpacing:".08em",fontFamily:"monospace",textTransform:"uppercase"}}>Scan Schedule Photo (Optional)</div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <input
+            type={showKey ? "text" : "password"}
+            value={apiKey}
+            onChange={function(e){ saveKey(e.target.value); }}
+            placeholder="Anthropic API key — sk-ant-..."
+            style={{flex:1,border:"1.5px solid "+P.cream,borderRadius:8,padding:"9px 12px",fontSize:12,outline:"none",background:"#fafafa",minWidth:0}}
+          />
+          <button onClick={function(){ setShowKey(!showKey); }} style={{background:P.cream,border:"none",borderRadius:8,padding:"9px 10px",fontSize:11,fontWeight:700,cursor:"pointer",color:P.softInk,flexShrink:0}}>
+            {showKey ? "Hide" : "Show"}
+          </button>
         </div>
-      )}
-
-      <div onClick={function(){ fileRef.current && fileRef.current.click(); }} style={{border:"2.5px dashed " + P.airplaneView,borderRadius:18,padding:"38px 24px",textAlign:"center",cursor:"pointer",background:P.airplaneView + "18"}}>
-        <div style={{fontSize:36,marginBottom:12}}>📅</div>
-        <div style={{fontWeight:900,fontSize:15,color:P.ink,marginBottom:6}}>Tap to upload schedule</div>
-        <div style={{fontSize:12,color:P.softInk}}>PNG · JPG · HEIC</div>
-        <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFile} />
+        {apiKey && apiKey.startsWith("sk-ant-") && (
+          <div style={{fontSize:11,fontWeight:800,color:P.monetPonds}}>Key saved to this device</div>
+        )}
+        <div
+          onClick={function(){ fileRef.current && fileRef.current.click(); }}
+          style={{border:"2px dashed "+P.airplaneView,borderRadius:12,padding:"18px",textAlign:"center",cursor:"pointer",background:P.airplaneView+"12",opacity:apiKey.trim()?1:0.45}}
+        >
+          <div style={{fontSize:26,marginBottom:6}}>📷</div>
+          <div style={{fontWeight:800,fontSize:13,color:P.ink}}>{scanning ? "Reading with AI..." : "Tap to scan schedule photo"}</div>
+          <div style={{fontSize:11,color:P.softInk,marginTop:3}}>PNG · JPG · HEIC</div>
+          <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFile} />
+        </div>
+        {scanDone && <div style={{fontSize:12,fontWeight:800,color:P.monetPonds}}>Scan complete — review and tap Save.</div>}
+        {scanError && <div style={{fontSize:12,color:P.tomatoJam,background:P.peonyBundle+"55",borderRadius:8,padding:"8px 12px"}}>{scanError}</div>}
+        <div style={{fontSize:11,color:P.softInk,lineHeight:1.5}}>Get a key free at <strong>console.anthropic.com</strong>. Under $0.01 per scan. Saved locally only.</div>
       </div>
 
-      {loading && (
-        <div style={{textAlign:"center",padding:"20px",color:P.tropicalRain}}>
-          <div style={{fontSize:26,marginBottom:8}}>⏳</div>
-          <div style={{fontWeight:700}}>Reading with AI...</div>
+      {saved && (
+        <div style={{background:P.limeade+"44",borderRadius:12,padding:"12px 16px",color:P.monetPonds,fontSize:13,fontWeight:800}}>
+          Schedule saved!
         </div>
       )}
 
-      {error && (
-        <div style={{background:P.peonyBundle + "66",borderRadius:12,padding:"14px 16px",color:P.tomatoJam,fontSize:13}}>
-          {error}
-        </div>
-      )}
-
-      {parsed && (
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          <SLabel>Match to Team</SLabel>
-          {parsed.map(function(row, i){
-            return (
-              <div key={i} style={{background:"#fff",borderRadius:14,padding:"14px 16px",boxShadow:"0 2px 10px rgba(43,33,24,.07)",border:"1.5px solid " + P.cream}}>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                  <div style={{fontWeight:900,flex:1,fontSize:14,color:P.ink}}>{row.name}</div>
-                  <select value={matchMap[i]} onChange={function(e){ const next = Object.assign({}, matchMap); next[i] = e.target.value; setMatchMap(next); }} style={{border:"1.5px solid " + P.cream,borderRadius:8,padding:"5px 8px",fontSize:12,background:"#fafafa",maxWidth:140}}>
-                    <option value="">-- Skip --</option>
-                    {team.map(function(m){ return <option key={m.id} value={m.id}>{m.name}</option>; })}
-                  </select>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {team.map(function(member){
+          var r = ROLES[member.role] || ROLES.SALES_ADVISOR;
+          var memberDraft = draft[member.id] || {};
+          var worksCount = DAYS.filter(function(d){ return memberDraft[d]; }).length;
+          var isOpen = openId === member.id;
+          return (
+            <div key={member.id} style={{background:"#fff",borderRadius:14,overflow:"hidden",boxShadow:"0 2px 10px rgba(43,33,24,.07)",border:"1.5px solid "+(isOpen ? r.bg : P.cream)}}>
+              <div onClick={function(){ setOpenId(isOpen ? null : member.id); }} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",cursor:"pointer"}}>
+                <Avatar initials={member.avatar} roleKey={member.role} />
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:900,fontSize:14,color:P.ink}}>{member.name}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
+                    <Pill roleKey={member.role} mini={true} />
+                    <span style={{fontSize:11,color:P.softInk}}>{worksCount} day{worksCount!==1?"s":""} this week</span>
+                  </div>
                 </div>
-                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                  {DAYS.map(function(d){
+                <span style={{color:"#ccc",fontSize:12}}>{isOpen ? "▲" : "▼"}</span>
+              </div>
+              {isOpen && (
+                <div style={{borderTop:"1.5px solid "+P.cream,padding:"14px 16px",background:P.cream+"55",display:"flex",flexDirection:"column",gap:10}}>
+                  {DAYS.map(function(day){
+                    var shift = memberDraft[day];
                     return (
-                      <div key={d} style={{background:row[d] ? P.tropicalRain + "22" : P.cream,borderRadius:6,padding:"3px 7px",fontSize:9,fontFamily:"monospace",color:row[d] ? P.tropicalRain : P.softInk}}>
-                        {d}: {row[d] ? fmtShift(row[d]) : "OFF"}
+                      <div key={day} style={{display:"flex",flexDirection:"column"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          <div style={{width:36,fontSize:11,fontWeight:800,color:P.softInk,fontFamily:"monospace"}}>{day}</div>
+                          {!shift ? (
+                            <button onClick={function(){ setShift(member.id, day, "9:00-17:00"); }} style={{background:P.airplaneView+"33",border:"1.5px dashed "+P.airplaneView,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",color:P.tropicalRain}}>
+                              + Add shift
+                            </button>
+                          ) : (
+                            <div style={{flex:1,background:r.bg+"18",borderRadius:8,padding:"6px 10px"}}>
+                              <span style={{fontSize:12,fontWeight:800,color:r.bg===P.peonyBundle?P.tomatoJam:r.bg,fontFamily:"monospace"}}>
+                                {fmtShift(shift)} ({shiftHours(shift)}h)
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        {shift && (
+                          <ShiftEditor
+                            value={shift}
+                            onChange={function(val){ setShift(member.id, day, val); }}
+                            onClear={function(){ clearShift(member.id, day); }}
+                          />
+                        )}
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            );
-          })}
-          <button onClick={apply} style={{background:P.tropicalRain,color:"#fff",border:"none",borderRadius:12,padding:"14px",fontSize:15,fontWeight:900,cursor:"pointer"}}>
-            Apply Schedules
-          </button>
-        </div>
-      )}
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <button onClick={saveAll} style={{background:P.tropicalRain,color:"#fff",border:"none",borderRadius:12,padding:"15px",fontSize:15,fontWeight:900,cursor:"pointer",position:"sticky",bottom:80}}>
+        Save Schedule
+      </button>
 
       <div>
         <SLabel>Role Color Guide</SLabel>
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           {Object.entries(ROLES).map(function([key, r]){
             return (
-              <div key={key} style={{display:"flex",alignItems:"center",gap:12,background:"#fff",borderRadius:12,padding:"10px 14px",boxShadow:"0 1px 6px rgba(43,33,24,.06)"}}>
-                <div style={{width:28,height:28,borderRadius:7,background:r.bg,flexShrink:0}} />
-                <div style={{flex:1,fontWeight:800,fontSize:13,color:P.ink}}>{r.label}</div>
-                {r.secondary && <span style={{fontSize:10,color:P.softInk,fontFamily:"monospace"}}>+ {r.secondary}</span>}
+              <div key={key} style={{display:"flex",alignItems:"center",gap:8,background:"#fff",borderRadius:12,padding:"10px 12px",boxShadow:"0 1px 6px rgba(43,33,24,.06)"}}>
+                <div style={{width:22,height:22,borderRadius:6,background:r.bg,flexShrink:0}} />
+                <div style={{minWidth:0}}>
+                  <div style={{fontWeight:800,fontSize:12,color:P.ink,lineHeight:1.2}}>{r.label}</div>
+                  {r.secondary && <div style={{fontSize:9,color:P.softInk,fontFamily:"monospace",marginTop:1}}>+ {r.secondary}</div>}
+                </div>
               </div>
             );
           })}
         </div>
-        <div style={{marginTop:12,background:P.pureSun + "33",borderRadius:10,padding:"12px 14px",fontSize:12,color:"#7D6608",lineHeight:1.6}}>
+        <div style={{marginTop:12,background:P.pureSun+"33",borderRadius:10,padding:"12px 14px",fontSize:12,color:"#7D6608",lineHeight:1.6}}>
           Always keep an Optician on the floor. Store Lead, Asst. Lead and Optical Supervisor can cover as opticians for no more than 1 hour.
         </div>
       </div>
@@ -715,35 +895,119 @@ function TeamScreen({ team, currentUser, setTeam }) {
   );
 }
 
-export default function ShiftSwapApp() {
-  const [team,     setTeam]     = useState(INIT_TEAM);
-  const [requests, setRequests] = useState(INIT_REQUESTS);
-  const [tab,      setTab]      = useState("home");
+function ShiftSwapApp() {
+  const [team,     setTeamState] = useState([]);
+  const [requests, setReqState]  = useState([]);
+  const [tab,      setTab]       = useState("home");
+  const [loading,  setLoading]   = useState(true);
 
-  const currentUser  = team.find(function(m){ return m.isCurrentUser; });
-  const pendingCount = requests.filter(function(r){ return r.requesterId !== currentUser.id && !r.status; }).length;
+  // ── Firebase listeners ──────────────────────────────────────────────────────
+  useState(function(){
+    // Seed team if empty, then listen
+    db.ref("team").once("value", function(snap){
+      if (!snap.val()) {
+        var obj = {};
+        INIT_TEAM.forEach(function(m){ obj[m.id] = m; });
+        db.ref("team").set(obj);
+      }
+    });
+    db.ref("team").on("value", function(snap){
+      var val = snap.val();
+      if (val) {
+        var arr = Object.values(val).sort(function(a,b){ return a.id - b.id; });
+        setTeamState(arr);
+      }
+      setLoading(false);
+    });
+
+    // Seed requests if empty, then listen
+    db.ref("requests").once("value", function(snap){
+      if (!snap.val()) {
+        var obj = {};
+        INIT_REQUESTS.forEach(function(r){ obj[r.id] = r; });
+        db.ref("requests").set(obj);
+      }
+    });
+    db.ref("requests").on("value", function(snap){
+      var val = snap.val();
+      if (val) {
+        var arr = Object.values(val).sort(function(a,b){ return b.id - a.id; });
+        setReqState(arr);
+      }
+    });
+
+    return function(){
+      db.ref("team").off();
+      db.ref("requests").off();
+    };
+  }, []);
+
+  // ── Firebase write helpers ──────────────────────────────────────────────────
+  function setTeam(updatedTeam) {
+    var obj = {};
+    updatedTeam.forEach(function(m){ obj[m.id] = m; });
+    db.ref("team").set(obj);
+  }
 
   function handleRespond(action, reqId, payload) {
-    setRequests(function(prev){
-      return prev.map(function(r){
-        if (r.id !== reqId) return r;
-        if (action === "offer" || action === "cover") return Object.assign({}, r, {offers: r.offers.concat([payload])});
-        if (action === "accept") return Object.assign({}, r, {status:"accepted"});
-        return r;
-      });
+    var ref = db.ref("requests/" + reqId);
+    ref.once("value", function(snap){
+      var req = snap.val();
+      if (!req) return;
+      if (action === "offer" || action === "cover") {
+        var offers = req.offers ? (Array.isArray(req.offers) ? req.offers : Object.values(req.offers)) : [];
+        offers = offers.concat([payload]);
+        ref.update({offers: offers});
+      } else if (action === "accept") {
+        ref.update({status: "accepted"});
+      }
     });
   }
 
   function handleCreate(info) {
-    setRequests(function(prev){ return [{id:Date.now(), requesterId:currentUser.id, type:info.type, day:info.day, requesterShift:info.requesterShift, note:info.note, offers:[], status:null}].concat(prev); });
+    var newId = Date.now();
+    db.ref("requests/" + newId).set({
+      id: newId,
+      requesterId: currentUser.id,
+      type: info.type,
+      day: info.day,
+      requesterShift: info.requesterShift,
+      note: info.note,
+      offers: [],
+      status: null
+    });
     setTab("home");
   }
+
+  // ── Loading / guard ─────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div style={{height:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",background:P.cream,flexDirection:"column",gap:16}}>
+        <div style={{fontSize:36}}>🔄</div>
+        <div style={{fontWeight:800,fontSize:15,color:P.ink}}>Loading ShiftSwap...</div>
+        <div style={{fontSize:12,color:P.softInk}}>Connecting to database</div>
+      </div>
+    );
+  }
+
+  var currentUser = team.find(function(m){ return m.isCurrentUser; });
+  if (!currentUser) {
+    return (
+      <div style={{height:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",background:P.cream,flexDirection:"column",gap:16}}>
+        <div style={{fontSize:36}}>⚠️</div>
+        <div style={{fontWeight:800,fontSize:15,color:P.ink}}>No user found</div>
+        <div style={{fontSize:12,color:P.softInk}}>Check your database connection</div>
+      </div>
+    );
+  }
+
+  var pendingCount = requests.filter(function(r){ return r.requesterId !== currentUser.id && !r.status; }).length;
 
   const tabs = [
     {key:"home",   icon:"🏠", label:"Requests"},
     {key:"find",   icon:"🔍", label:"Find"},
     {key:"sched",  icon:"📅", label:"Schedule"},
-    {key:"upload", icon:"📷", label:"Upload"},
+    {key:"upload", icon:"✏️", label:"Edit"},
     {key:"team",   icon:"👤", label:"Team"},
   ];
 
@@ -792,3 +1056,11 @@ export default function ShiftSwapApp() {
     </div>
   );
 }
+
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(ShiftSwapApp));
+
+  </script>
+</body>
+</html>
