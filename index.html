@@ -836,7 +836,7 @@ function UploadScreen({ team, setTeam }) {
 function EditRoleSheet({ member, onSave, onClose }) {
   return (
     <Sheet onClose={onClose}>
-      <div style={{fontWeight:900,fontSize:17,color:P.ink,marginBottom:16}}>Edit Role — {member.name}</div>
+      <div style={{fontWeight:900,fontSize:17,color:P.ink,marginBottom:16}}>Edit Role · {member.name}</div>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {Object.entries(ROLES).map(function([key, r]){
           return (
@@ -877,7 +877,7 @@ function TeamScreen({ team, currentUser, setTeam }) {
       </div>
 
       <div>
-        <SLabel>Team Roles</SLabel>
+        <SLabel>Team Members</SLabel>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {team.map(function(member){
             return (
@@ -1015,8 +1015,8 @@ function ShiftSwapApp() {
     {key:"home",   icon:"🏠", label:"Requests"},
     {key:"find",   icon:"🔍", label:"Find"},
     {key:"sched",  icon:"📅", label:"Schedule"},
-    {key:"upload", icon:"✏️", label:"Edit"},
-    {key:"team",   icon:"👤", label:"Team"},
+    {key:"upload", icon:"📷", label:"Upload"},
+    {key:"team",   icon:"👥", label:"Users"},
   ];
 
   return (
