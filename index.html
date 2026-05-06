@@ -644,10 +644,7 @@ async function parseImage(base64, mediaType, apiKey) {
 }
 
 function UploadScreen({ team, setTeam }) {
-  var initDraft = {};
-  team.forEach(function(m){ initDraft[m.id] = Object.assign({}, m.schedule); });
-
-  const [draft,     setDraft]     = useState(initDraft);
+  const [draft,     setDraft]     = useState({});
   const [saved,     setSaved]     = useState(false);
   const [openId,    setOpenId]    = useState(null);
   const [apiKey,    setApiKey]    = useState(function(){ return localStorage.getItem("ss_api_key") || ""; });
@@ -656,6 +653,15 @@ function UploadScreen({ team, setTeam }) {
   const [scanError, setScanError] = useState(null);
   const [scanDone,  setScanDone]  = useState(false);
   const fileRef = useRef();
+
+  // Keep draft in sync when team loads from Firebase
+  useEffect(function(){
+    if (team && team.length > 0) {
+      var initDraft = {};
+      team.forEach(function(m){ initDraft[m.id] = Object.assign({}, m.schedule); });
+      setDraft(initDraft);
+    }
+  }, [team.length]);
 
   function saveKey(val) { setApiKey(val); localStorage.setItem("ss_api_key", val); }
 
@@ -700,9 +706,10 @@ function UploadScreen({ team, setTeam }) {
   function clearShift(memberId, day) { setShift(memberId, day, null); }
 
   function saveAll() {
-    setTeam(function(prev){
-      return prev.map(function(m){ return Object.assign({}, m, {schedule: draft[m.id] || m.schedule}); });
+    var updated = team.map(function(m){
+      return Object.assign({}, m, {schedule: draft[m.id] || m.schedule});
     });
+    setTeam(updated);
     setSaved(true);
   }
 
@@ -906,7 +913,16 @@ function TeamScreen({ team, currentUser, setTeam }) {
 function ShiftSwapApp() {
   const [team,     setTeamState] = useState([]);
   const [requests, setReqState]  = useState([]);
-  const [tab,      setTab]       = useState("home");
+  const [tab, setTab] = useState(function(){
+    var hash = window.location.hash.replace("#","");
+    var valid = ["home","find","sched","upload","team"];
+    return valid.indexOf(hash) !== -1 ? hash : "home";
+  });
+
+  function handleTabChange(key) {
+    handleTabChange(key);
+    window.location.hash = key;
+  }
   const [loading,  setLoading]   = useState(true);
 
   // ── Firebase listeners ──────────────────────────────────────────────────────
@@ -984,7 +1000,7 @@ function ShiftSwapApp() {
       offers: [],
       status: null
     });
-    setTab("home");
+    handleTabChange("home");
   }
 
   // ── Loading / guard ─────────────────────────────────────────────────────────
@@ -1048,7 +1064,7 @@ function ShiftSwapApp() {
       <div style={{position:"absolute",bottom:0,left:0,right:0,background:"#fff",borderTop:"1.5px solid " + P.cream,display:"grid",gridTemplateColumns:"repeat(5,1fr)"}}>
         {tabs.map(function(t){
           return (
-            <button key={t.key} onClick={function(){ setTab(t.key); }} style={{background:"none",border:"none",padding:"9px 2px 11px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,position:"relative",color:tab === t.key ? P.tropicalRain : P.softInk}}>
+            <button key={t.key} onClick={function(){ handleTabChange(t.key); }} style={{background:"none",border:"none",padding:"9px 2px 11px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,position:"relative",color:tab === t.key ? P.tropicalRain : P.softInk}}>
               {t.key === "home" && pendingCount > 0 && (
                 <div style={{position:"absolute",top:6,right:"calc(50% - 14px)",background:P.tomatoJam,borderRadius:"50%",width:8,height:8}} />
               )}
