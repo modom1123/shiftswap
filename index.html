@@ -938,36 +938,36 @@ function ShiftSwapApp() {
 
   // ── Firebase listeners ──────────────────────────────────────────────────────
   useEffect(function(){
-    // Team: seed if empty, then listen
+    var settled = false;
+    function done() { if (!settled) { settled = true; setLoading(false); } }
+    var timeout = setTimeout(done, 8000);
+
     db.ref("team").once("value", function(snap){
       if (!snap.val()) {
         var obj = {};
         INIT_TEAM.forEach(function(m){ obj[m.id] = m; });
         db.ref("team").set(obj, function(){
-          // Only start listening AFTER seed is complete
           db.ref("team").on("value", function(snap2){
             var val = snap2.val();
             if (val) {
-              var arr = Object.values(val).sort(function(a,b){ return Number(a.id) - Number(b.id); });
+              var arr = Object.values(val).sort(function(a,b){ return Number(a.id)-Number(b.id); });
               setTeamState(arr);
             }
-            setLoading(false);
+            done();
           });
         });
       } else {
-        // Data exists, start listening immediately
         db.ref("team").on("value", function(snap2){
           var val = snap2.val();
           if (val) {
-            var arr = Object.values(val).sort(function(a,b){ return Number(a.id) - Number(b.id); });
+            var arr = Object.values(val).sort(function(a,b){ return Number(a.id)-Number(b.id); });
             setTeamState(arr);
           }
-          setLoading(false);
+          done();
         });
       }
-    });
+    }, function(err){ console.error("team err:", err); done(); });
 
-    // Requests: seed if empty, then listen
     db.ref("requests").once("value", function(snap){
       if (!snap.val()) {
         var obj = {};
@@ -976,7 +976,7 @@ function ShiftSwapApp() {
           db.ref("requests").on("value", function(snap2){
             var val = snap2.val();
             if (val) {
-              var arr = Object.values(val).sort(function(a,b){ return Number(b.id) - Number(a.id); });
+              var arr = Object.values(val).sort(function(a,b){ return Number(b.id)-Number(a.id); });
               setReqState(arr);
             }
           });
@@ -985,14 +985,15 @@ function ShiftSwapApp() {
         db.ref("requests").on("value", function(snap2){
           var val = snap2.val();
           if (val) {
-            var arr = Object.values(val).sort(function(a,b){ return Number(b.id) - Number(a.id); });
+            var arr = Object.values(val).sort(function(a,b){ return Number(b.id)-Number(a.id); });
             setReqState(arr);
           }
         });
       }
-    });
+    }, function(err){ console.error("requests err:", err); });
 
     return function(){
+      clearTimeout(timeout);
       db.ref("team").off();
       db.ref("requests").off();
     };
