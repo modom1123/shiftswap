@@ -627,7 +627,7 @@ async function parseImage(base64, mediaType, apiKey) {
     },
     body: JSON.stringify({
       model:"claude-sonnet-4-5",
-      max_tokens:1000,
+      max_tokens:4000,
       messages:[{role:"user",content:[
         {type:"image", source:{type:"base64",media_type:mediaType,data:base64}},
         {type:"text",  text:"Extract the weekly work schedule from this image. Return ONLY a valid JSON array. No explanation, no markdown, no code fences. Use double-quoted keys and string values. Format: [{\"name\":\"Full Name\",\"Mon\":\"09:00-17:00\",\"Tue\":null,\"Wed\":\"09:00-17:00\",\"Thu\":null,\"Fri\":null,\"Sat\":null,\"Sun\":null}] Use 24h time like 09:00-17:00. Days off must be null not the word null. Include every person."},
