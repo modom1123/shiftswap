@@ -937,36 +937,57 @@ function ShiftSwapApp() {
 
   // ── Firebase listeners ──────────────────────────────────────────────────────
   useEffect(function(){
-    // Seed team if empty, then listen
+    // Team: seed if empty, then listen
     db.ref("team").once("value", function(snap){
       if (!snap.val()) {
         var obj = {};
         INIT_TEAM.forEach(function(m){ obj[m.id] = m; });
-        db.ref("team").set(obj);
+        db.ref("team").set(obj, function(){
+          // Only start listening AFTER seed is complete
+          db.ref("team").on("value", function(snap2){
+            var val = snap2.val();
+            if (val) {
+              var arr = Object.values(val).sort(function(a,b){ return Number(a.id) - Number(b.id); });
+              setTeamState(arr);
+            }
+            setLoading(false);
+          });
+        });
+      } else {
+        // Data exists, start listening immediately
+        db.ref("team").on("value", function(snap2){
+          var val = snap2.val();
+          if (val) {
+            var arr = Object.values(val).sort(function(a,b){ return Number(a.id) - Number(b.id); });
+            setTeamState(arr);
+          }
+          setLoading(false);
+        });
       }
-    });
-    db.ref("team").on("value", function(snap){
-      var val = snap.val();
-      if (val) {
-        var arr = Object.values(val).sort(function(a,b){ return a.id - b.id; });
-        setTeamState(arr);
-      }
-      setLoading(false);
     });
 
-    // Seed requests if empty, then listen
+    // Requests: seed if empty, then listen
     db.ref("requests").once("value", function(snap){
       if (!snap.val()) {
         var obj = {};
         INIT_REQUESTS.forEach(function(r){ obj[r.id] = r; });
-        db.ref("requests").set(obj);
-      }
-    });
-    db.ref("requests").on("value", function(snap){
-      var val = snap.val();
-      if (val) {
-        var arr = Object.values(val).sort(function(a,b){ return b.id - a.id; });
-        setReqState(arr);
+        db.ref("requests").set(obj, function(){
+          db.ref("requests").on("value", function(snap2){
+            var val = snap2.val();
+            if (val) {
+              var arr = Object.values(val).sort(function(a,b){ return Number(b.id) - Number(a.id); });
+              setReqState(arr);
+            }
+          });
+        });
+      } else {
+        db.ref("requests").on("value", function(snap2){
+          var val = snap2.val();
+          if (val) {
+            var arr = Object.values(val).sort(function(a,b){ return Number(b.id) - Number(a.id); });
+            setReqState(arr);
+          }
+        });
       }
     });
 
