@@ -660,6 +660,7 @@ function UploadScreen({ team, setTeam }) {
   const [scanning,  setScanning]  = useState(false);
   const [scanError, setScanError] = useState(null);
   const [scanDone,  setScanDone]  = useState(false);
+  const [scanRows,  setScanRows]  = useState([]);
   const fileRef = useRef();
 
   // Keep draft in sync when team loads from Firebase
@@ -677,7 +678,7 @@ function UploadScreen({ team, setTeam }) {
     var file = e.target.files[0];
     if (!file) { setScanError("No file selected."); return; }
     if (!apiKey.trim()) { setScanError("Enter your Anthropic API key first."); return; }
-    setScanError(null); setScanning(true); setScanDone(false);
+    setScanError(null); setScanning(true); setScanDone(false); setScanRows([]);
     var reader = new FileReader();
     reader.onerror = function(){ setScanError("Could not read file."); setScanning(false); };
     reader.onload = function() {
@@ -696,7 +697,7 @@ function UploadScreen({ team, setTeam }) {
             });
             return next;
           });
-          setScanDone(true); setSaved(false);
+          setScanRows(rows); setScanDone(true); setSaved(false);
         })
         .catch(function(err){ setScanError("Error: " + (err.message || "Could not read schedule.")); })
         .finally(function(){ setScanning(false); });
@@ -756,7 +757,40 @@ function UploadScreen({ team, setTeam }) {
           <div style={{fontSize:11,color:P.softInk,marginTop:3}}>PNG · JPG · HEIC</div>
           <input type="file" accept="image/*" style={{display:"none"}} onChange={handleFile} />
         </label>
-        {scanDone && <div style={{fontSize:12,fontWeight:800,color:P.monetPonds}}>Scan complete — review and tap Save.</div>}
+        {scanDone && (
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div style={{fontSize:11,fontWeight:800,color:P.monetPonds,marginBottom:4}}>
+              {scanRows.length > 0 ? "Scan complete — review shifts below, then Save." : "Scan complete — shifts updated. Tap Save to apply."}
+            </div>
+            {scanRows.length > 0 && (
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <div style={{fontSize:10,fontWeight:800,color:P.softInk,letterSpacing:".08em",fontFamily:"monospace",textTransform:"uppercase"}}>Detected Schedules</div>
+                {scanRows.map(function(row, i){
+                  var match = team.find(function(m){ return m.name.toLowerCase().includes(row.name.split(" ")[0].toLowerCase()); });
+                  return (
+                    <div key={i} style={{background:match?"#fff":P.autumnLavender+"44",borderRadius:10,padding:"10px 14px",border:"1.5px solid "+(match?P.limeade:P.autumnLavender)}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                        {match && <Avatar initials={match.avatar} roleKey={match.role} size={24} />}
+                        <div style={{fontWeight:800,fontSize:13,color:P.ink}}>{row.name}</div>
+                        <span style={{fontSize:10,fontFamily:"monospace",fontWeight:700,color:match?P.monetPonds:P.tomatoJam}}>{match?"MATCHED":"NO MATCH"}</span>
+                      </div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                        {DAYS.map(function(d){
+                          return (
+                            <div key={d} style={{background:row[d]?P.tropicalRain+"18":P.cream,borderRadius:5,padding:"2px 7px",fontSize:9,fontFamily:"monospace",color:row[d]?P.tropicalRain:P.softInk}}>
+                              {d}: {row[d]?fmtShift(row[d]):"off"}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{fontSize:11,color:P.softInk,lineHeight:1.5}}>NO MATCH rows were not recognized — check name spelling matches the team list.</div>
+              </div>
+            )}
+          </div>
+        )}
         {scanError && <div style={{fontSize:12,color:P.tomatoJam,background:P.peonyBundle+"55",borderRadius:8,padding:"8px 12px"}}>{scanError}</div>}
         <div style={{fontSize:11,color:P.softInk,lineHeight:1.5}}>Get a key free at <strong>console.anthropic.com</strong>. Under $0.01 per scan. Saved locally only.</div>
       </div>
