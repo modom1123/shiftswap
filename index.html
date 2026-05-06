@@ -1559,8 +1559,70 @@ function ShiftSwapApp() {
   );
 }
 
+function LoginGate({ children }) {
+  const [authed,   setAuthed]   = useState(function(){ return localStorage.getItem("ss_auth") === "1"; });
+  const [user,     setUser]     = useState("");
+  const [pass,     setPass]     = useState("");
+  const [showPass, setShowPass] = useState(false);
+  const [error,    setError]    = useState(null);
+
+  function handleLogin() {
+    if (user.trim().toLowerCase() === "the creator" && pass === "pArtyInth3US@") {
+      localStorage.setItem("ss_auth", "1");
+      setAuthed(true);
+    } else {
+      setError("Incorrect username or password.");
+      setPass("");
+    }
+  }
+
+  function handleKey(e) { if (e.key === "Enter") handleLogin(); }
+
+  if (authed) return children;
+
+  return (
+    <div style={{maxWidth:480,margin:"0 auto",height:"100dvh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:P.cream,fontFamily:"sans-serif",padding:"32px 24px"}}>
+      <div style={{width:"100%",display:"flex",flexDirection:"column",alignItems:"center",gap:24}}>
+        <div style={{width:72,height:72,borderRadius:18,background:P.tropicalRain,display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,boxShadow:"0 4px 20px rgba(0,132,113,.3)"}}>🔄</div>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontWeight:900,fontSize:26,color:P.ink}}>ShiftSwap</div>
+          <div style={{fontSize:13,color:P.softInk,marginTop:4,fontFamily:"monospace"}}>Washington Square · WP</div>
+        </div>
+        <div style={{width:"100%",display:"flex",flexDirection:"column",gap:12}}>
+          <input
+            type="text"
+            value={user}
+            onChange={function(e){ setUser(e.target.value); setError(null); }}
+            onKeyDown={handleKey}
+            placeholder="Username"
+            autoCapitalize="none"
+            style={{width:"100%",border:"1.5px solid "+P.cream,borderRadius:12,padding:"14px 16px",fontSize:15,outline:"none",background:"#fff",boxSizing:"border-box",boxShadow:"0 1px 6px rgba(43,33,24,.07)"}}
+          />
+          <div style={{position:"relative",width:"100%"}}>
+            <input
+              type={showPass ? "text" : "password"}
+              value={pass}
+              onChange={function(e){ setPass(e.target.value); setError(null); }}
+              onKeyDown={handleKey}
+              placeholder="Password"
+              style={{width:"100%",border:"1.5px solid "+P.cream,borderRadius:12,padding:"14px 48px 14px 16px",fontSize:15,outline:"none",background:"#fff",boxSizing:"border-box",boxShadow:"0 1px 6px rgba(43,33,24,.07)"}}
+            />
+            <button onClick={function(){ setShowPass(!showPass); }} style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:11,color:P.softInk,fontWeight:700,padding:0}}>
+              {showPass ? "Hide" : "Show"}
+            </button>
+          </div>
+          {error && <div style={{fontSize:12,color:P.tomatoJam,textAlign:"center",fontWeight:700}}>{error}</div>}
+          <button onClick={handleLogin} style={{background:P.tropicalRain,color:"#fff",border:"none",borderRadius:12,padding:"14px",fontSize:15,fontWeight:900,cursor:"pointer",marginTop:4,boxShadow:"0 2px 12px rgba(0,132,113,.3)"}}>
+            Sign In
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(React.createElement(ShiftSwapApp));
+root.render(React.createElement(LoginGate, null, React.createElement(ShiftSwapApp)));
 
   </script>
 </body>
