@@ -280,7 +280,7 @@ function HomeScreen({ team, requests, currentUser, onRespond }) {
         <div style={{fontSize:9,opacity:.7,letterSpacing:".1em",fontFamily:"monospace",marginBottom:10}}>OPTICIAN COVERAGE — THIS WEEK</div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
           {DAYS.map(function(day){
-            const ok = team.some(function(m){ return isOpt(m.role) && m.schedule[day]; });
+            const ok = team.some(function(m){ return isOpt(m.role) && m.schedule && m.schedule[day]; });
             return (
               <div key={day} style={{background:ok ? "rgba(255,255,255,.18)" : P.tomatoJam + "BB",borderRadius:8,padding:"6px 10px",textAlign:"center",minWidth:36}}>
                 <div style={{fontSize:9,opacity:.8,fontFamily:"monospace"}}>{day}</div>
@@ -327,13 +327,13 @@ function FindScreen({ team, currentUser, onCreateRequest }) {
     ? team
         .filter(function(m){
           if (m.id === currentUser.id) return false;
-          const s = m.schedule[selDay];
+          const s = (m.schedule || {})[selDay];
           return selType === "COVER" ? !s : !!s;
         })
         .map(function(m){
           const roleMatch = m.role === currentUser.role;
           const optMatch  = isOpt(currentUser.role) ? isOpt(m.role) : true;
-          return Object.assign({}, m, { theirShift:m.schedule[selDay], score:(roleMatch?2:0)+(optMatch?1:0), roleMatch:roleMatch });
+          return Object.assign({}, m, { theirShift:(m.schedule||{})[selDay], score:(roleMatch?2:0)+(optMatch?1:0), roleMatch:roleMatch });
         })
         .sort(function(a,b){ return b.score - a.score; })
     : [];
@@ -506,7 +506,7 @@ function ScheduleScreen({ team, currentUser, onCreateRequest }) {
                   </div>
                 </div>
                 {DAYS.map(function(day){
-                  const s = member.schedule[day];
+                  const s = (member.schedule || {})[day];
                   return (
                     <div key={day} style={{padding:"4px 2px",display:"flex",alignItems:"center",justifyContent:"center"}}>
                       {s ? (
@@ -669,7 +669,7 @@ function UploadScreen({ team, setTeam }) {
   useEffect(function(){
     if (team && team.length > 0) {
       var draftReady = {};
-      team.forEach(function(m){ draftReady[m.id] = Object.assign({}, m.schedule); });
+      team.forEach(function(m){ draftReady[m.id] = Object.assign({Mon:null,Tue:null,Wed:null,Thu:null,Fri:null,Sat:null,Sun:null}, m.schedule || {}); });
       setDraft(draftReady);
     }
   }, [team.length]);
@@ -1062,7 +1062,9 @@ function ShiftSwapApp() {
           db.ref("team").on("value", function(snap2){
             var val = snap2.val();
             if (val) {
-              var arr = Object.values(val).sort(function(a,b){ return Number(a.id)-Number(b.id); });
+              var arr = Object.values(val).sort(function(a,b){ return Number(a.id)-Number(b.id); }).map(function(m){
+              return Object.assign({}, m, {schedule: Object.assign({Mon:null,Tue:null,Wed:null,Thu:null,Fri:null,Sat:null,Sun:null}, m.schedule || {})});
+            });
               setTeamState(arr);
             }
             done();
@@ -1072,7 +1074,9 @@ function ShiftSwapApp() {
         db.ref("team").on("value", function(snap2){
           var val = snap2.val();
           if (val) {
-            var arr = Object.values(val).sort(function(a,b){ return Number(a.id)-Number(b.id); });
+            var arr = Object.values(val).sort(function(a,b){ return Number(a.id)-Number(b.id); }).map(function(m){
+              return Object.assign({}, m, {schedule: Object.assign({Mon:null,Tue:null,Wed:null,Thu:null,Fri:null,Sat:null,Sun:null}, m.schedule || {})});
+            });
             setTeamState(arr);
           }
           done();
