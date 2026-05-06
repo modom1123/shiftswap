@@ -341,27 +341,36 @@ function HomeScreen({ team, requests, currentUser, onRespond }) {
 }
 
 function FindScreen({ team, currentUser, onCreateRequest }) {
-  const [selDay,  setSelDay]  = useState(null);
-  const [selType, setSelType] = useState(null);
-  const [note,    setNote]    = useState("");
-  const [posted,  setPosted]  = useState(false);
+  const [findMode,  setFindMode] = useState(null);      // "manager" | "me"
+  const [subjectId, setSubjectId] = useState(null);     // who needs coverage (manager mode)
+  const [selDay,    setSelDay]   = useState(null);
+  const [selType,   setSelType]  = useState(null);
+  const [note,      setNote]     = useState("");
+  const [posted,    setPosted]   = useState(false);
 
-  const myShift = selDay ? currentUser.schedule[selDay] : null;
+  // In manager mode, subject is whoever we selected; in me mode, it's currentUser
+  var subject = findMode === "manager" && subjectId
+    ? team.find(function(m){ return m.id === subjectId; })
+    : currentUser;
 
-  const suggestions = (selDay && selType)
+  var subjectShift = (selDay && subject) ? ((subject.schedule||{})[selDay] || null) : null;
+
+  var suggestions = (selDay && selType && subject)
     ? team
         .filter(function(m){
-          if (m.id === currentUser.id) return false;
-          const s = (m.schedule || {})[selDay];
+          if (m.id === subject.id) return false;
+          var s = (m.schedule||{})[selDay];
           return selType === "COVER" ? !s : !!s;
         })
         .map(function(m){
-          const roleMatch = m.role === currentUser.role;
-          const optMatch  = isOpt(currentUser.role) ? isOpt(m.role) : true;
-          return Object.assign({}, m, { theirShift:(m.schedule||{})[selDay], score:(roleMatch?2:0)+(optMatch?1:0), roleMatch:roleMatch });
+          var roleMatch = m.role === subject.role;
+          var optMatch  = isOpt(subject.role) ? isOpt(m.role) : true;
+          return Object.assign({}, m, {theirShift:(m.schedule||{})[selDay], score:(roleMatch?2:0)+(optMatch?1:0), roleMatch:roleMatch});
         })
         .sort(function(a,b){ return b.score - a.score; })
     : [];
+
+  function reset() { setPosted(false); setSelDay(null); setSelType(null); setNote(""); setSubjectId(null); }
 
   if (posted) {
     return (
@@ -369,9 +378,7 @@ function FindScreen({ team, currentUser, onCreateRequest }) {
         <div style={{fontSize:52}}>🎉</div>
         <div style={{fontWeight:900,fontSize:22,color:P.ink}}>Request Posted!</div>
         <div style={{fontSize:13,color:P.softInk,lineHeight:1.6}}>Your team will see it in Requests.</div>
-        <button onClick={function(){ setPosted(false); setSelDay(null); setSelType(null); setNote(""); }} style={{marginTop:8,background:P.tropicalRain,color:"#fff",border:"none",borderRadius:12,padding:"12px 28px",fontSize:14,fontWeight:800,cursor:"pointer"}}>
-          Find Another
-        </button>
+        <button onClick={reset} style={{marginTop:8,background:P.tropicalRain,color:"#fff",border:"none",borderRadius:12,padding:"12px 28px",fontSize:14,fontWeight:800,cursor:"pointer"}}>Find Another</button>
       </div>
     );
   }
@@ -380,49 +387,39 @@ function FindScreen({ team, currentUser, onCreateRequest }) {
     <div style={{padding:"20px 16px",display:"flex",flexDirection:"column",gap:22}}>
       <div>
         <div style={{fontWeight:900,fontSize:21,color:P.ink}}>Find Coverage</div>
-        <div style={{fontSize:13,color:P.softInk,marginTop:3}}>Pick a shift and see who can help.</div>
+        <div style={{fontSize:13,color:P.softInk,marginTop:3}}>Find someone to cover a shift or swap.</div>
       </div>
 
       <div>
-        <SLabel>1 — Pick a Day</SLabel>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
-          {DAYS.map(function(day){
-            const shift = currentUser.schedule[day];
-            const active = selDay === day;
-            return (
-              <div key={day} onClick={function(){ if (!shift) return; setSelDay(day); setSelType(null); }} style={{borderRadius:12,overflow:"hidden",cursor:shift?"pointer":"default",opacity:shift?1:.38,border:"2.5px solid " + (active ? P.tomatoJam : P.cream),boxShadow:active?"0 0 0 3px " + P.tomatoJam + "30":"none",transition:"all .15s"}}>
-                <div style={{background:active?P.tomatoJam:shift?P.ink:P.autumnLavender,color:"#fff",padding:"5px 2px",textAlign:"center",fontSize:9,fontWeight:800,fontFamily:"monospace"}}>
-                  {day}
-                </div>
-                <div style={{background:"#fff",padding:"7px 2px",textAlign:"center"}}>
-                  {shift ? (
-                    <div>
-                      <div style={{fontSize:14,fontWeight:900,color:active?P.tomatoJam:P.ink}}>{shiftHours(shift)}h</div>
-                      <div style={{fontSize:7,color:P.softInk,fontFamily:"monospace",lineHeight:1.3,marginTop:2}}>{fmt12(shift.split("-")[0])}<br />{fmt12(shift.split("-")[1])}</div>
-                    </div>
-                  ) : (
-                    <div style={{fontSize:9,color:"#ccc",padding:"5px 0"}}>OFF</div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        <SLabel>Find Coverage As</SLabel>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div onClick={function(){ setFindMode("manager"); setSelDay(null); setSelType(null); setSubjectId(null); }} style={{borderRadius:16,padding:"18px 14px",cursor:"pointer",border:"2.5px solid "+(findMode==="manager"?P.tomatoJam:P.cream),background:findMode==="manager"?P.tomatoJam+"12":"#fff",transition:"all .15s",boxShadow:findMode==="manager"?"0 0 0 2px "+P.tomatoJam+"25":"0 2px 8px rgba(43,33,24,.06)"}}>
+            <div style={{fontSize:26,marginBottom:8}}>🧑‍💼</div>
+            <div style={{fontWeight:900,fontSize:14,color:P.ink}}>As a Manager</div>
+            <div style={{fontSize:11,color:P.softInk,marginTop:4,lineHeight:1.4}}>Find coverage for any team member's call-out</div>
+          </div>
+          <div onClick={function(){ setFindMode("me"); setSelDay(null); setSelType(null); setSubjectId(null); }} style={{borderRadius:16,padding:"18px 14px",cursor:"pointer",border:"2.5px solid "+(findMode==="me"?P.tropicalRain:P.cream),background:findMode==="me"?P.tropicalRain+"12":"#fff",transition:"all .15s",boxShadow:findMode==="me"?"0 0 0 2px "+P.tropicalRain+"25":"0 2px 8px rgba(43,33,24,.06)"}}>
+            <div style={{fontSize:26,marginBottom:8}}>🙋</div>
+            <div style={{fontWeight:900,fontSize:14,color:P.ink}}>As Me</div>
+            <div style={{fontSize:11,color:P.softInk,marginTop:4,lineHeight:1.4}}>Find someone to cover or swap your shift</div>
+          </div>
         </div>
       </div>
 
-      {selDay && myShift && (
+      {findMode === "manager" && (
         <div>
-          <SLabel>2 — What Do You Need?</SLabel>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:8}}>
-            {[
-              {key:"SWAP",  icon:"🔄", label:"Shift Swap",  desc:"Trade shifts same day"},
-              {key:"COVER", icon:"🙋", label:"Full Cover",  desc:"Need the whole day off"},
-            ].map(function(opt){
+          <SLabel>1 — Who Called Out?</SLabel>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {team.filter(function(m){ return m.id !== currentUser.id; }).map(function(m){
+              var active = subjectId === m.id;
               return (
-                <div key={opt.key} onClick={function(){ setSelType(opt.key); }} style={{border:"2.5px solid " + (selType === opt.key ? P.tomatoJam : P.cream),borderRadius:14,padding:"16px 14px",cursor:"pointer",background:selType === opt.key ? P.tomatoJam + "15" : "#fff",transition:"all .15s"}}>
-                  <div style={{fontSize:24,marginBottom:8}}>{opt.icon}</div>
-                  <div style={{fontWeight:900,fontSize:13,color:P.ink}}>{opt.label}</div>
-                  <div style={{fontSize:11,color:P.softInk,marginTop:3}}>{opt.desc}</div>
+                <div key={m.id} onClick={function(){ setSubjectId(m.id); setSelDay(null); setSelType(null); }} style={{background:"#fff",borderRadius:12,padding:"11px 14px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",border:"2px solid "+(active?P.tomatoJam:P.cream),boxShadow:active?"0 0 0 2px "+P.tomatoJam+"20":"none",transition:"all .15s"}}>
+                  <Avatar initials={m.avatar} roleKey={m.role} size={34} />
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:800,fontSize:14,color:P.ink}}>{m.name}</div>
+                    <Pill roleKey={m.role} />
+                  </div>
+                  {active && <span style={{color:P.tomatoJam,fontSize:18}}>✓</span>}
                 </div>
               );
             })}
@@ -430,29 +427,87 @@ function FindScreen({ team, currentUser, onCreateRequest }) {
         </div>
       )}
 
-      {selDay && myShift && selType && (
+      {findMode && (findMode === "me" || subjectId) && (
         <div>
-          <SLabel>3 — Who Could Help?</SLabel>
+          <SLabel>{findMode==="manager"?"2":"1"} — Which Day?</SLabel>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
+            {DAYS.map(function(day){
+              var shift = subject ? (subject.schedule||{})[day] : null;
+              var active = selDay === day;
+              return (
+                <div key={day} onClick={function(){ if(!shift) return; setSelDay(day); setSelType(null); }} style={{borderRadius:12,overflow:"hidden",cursor:shift?"pointer":"default",opacity:shift?1:.38,border:"2.5px solid "+(active?P.tomatoJam:P.cream),boxShadow:active?"0 0 0 3px "+P.tomatoJam+"30":"none",transition:"all .15s"}}>
+                  <div style={{background:active?P.tomatoJam:shift?P.ink:P.autumnLavender,color:"#fff",padding:"5px 2px",textAlign:"center",fontSize:9,fontWeight:800,fontFamily:"monospace"}}>{day}</div>
+                  <div style={{background:"#fff",padding:"7px 2px",textAlign:"center"}}>
+                    {shift ? (
+                      <div>
+                        <div style={{fontSize:13,fontWeight:900,color:active?P.tomatoJam:P.ink}}>{shiftHours(shift)}h</div>
+                        <div style={{fontSize:7,color:P.softInk,fontFamily:"monospace",lineHeight:1.3,marginTop:2}}>{fmt12(shift.split("-")[0])}<br/>{fmt12(shift.split("-")[1])}</div>
+                      </div>
+                    ) : (
+                      <div style={{fontSize:9,color:"#ccc",padding:"5px 0"}}>OFF</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {selDay && subjectShift && (
+        <div>
+          <SLabel>{findMode==="manager"?"3":"2"} — Type of Request?</SLabel>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:8}}>
+            {[
+              {key:"COVER", icon:"🚨", label:"Call-Out Cover",  desc:"Full shift needs covering"},
+              {key:"SWAP",  icon:"🔄", label:"Shift Swap",       desc:"Trade with another shift"},
+            ].map(function(opt){
+              return (
+                <div key={opt.key} onClick={function(){ setSelType(opt.key); }} style={{border:"2.5px solid "+(selType===opt.key?P.tomatoJam:P.cream),borderRadius:14,padding:"16px 14px",cursor:"pointer",background:selType===opt.key?P.tomatoJam+"15":"#fff",transition:"all .15s"}}>
+                  <div style={{fontSize:24,marginBottom:8}}>{opt.icon}</div>
+                  <div style={{fontWeight:900,fontSize:13,color:P.ink}}>{opt.label}</div>
+                  <div style={{fontSize:11,color:P.softInk,marginTop:3,lineHeight:1.4}}>{opt.desc}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {selDay && subjectShift && selType && (
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {findMode === "manager" && subject && (
+            <div style={{background:P.tomatoJam+"12",borderRadius:12,padding:"12px 16px",border:"1.5px solid "+P.tomatoJam+"30",display:"flex",alignItems:"center",gap:12}}>
+              <Avatar initials={subject.avatar} roleKey={subject.role} size={36} />
+              <div>
+                <div style={{fontWeight:900,fontSize:13,color:P.ink}}>{subject.name} — Call-Out</div>
+                <div style={{fontSize:12,color:P.softInk}}>{selDay} · {fmtShift(subjectShift)} ({shiftHours(subjectShift)}h)</div>
+              </div>
+            </div>
+          )}
+
+          <SLabel>{findMode==="manager"?"4":"3"} — Available to Cover</SLabel>
           {suggestions.length === 0 ? (
-            <Empty icon="🌾" text={selType === "COVER" ? "No teammates are off that day." : "No teammates working that day to swap with."} />
+            <Empty icon="🌾" text={selType==="COVER"?"No teammates are off that day.":"No teammates working that day to swap with."} />
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {suggestions.map(function(m){
                 return (
-                  <div key={m.id} style={{background:"#fff",borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 2px 12px rgba(43,33,24,.08)",border:"2px solid " + (m.score >= 3 ? P.limeade : m.score >= 2 ? P.airplaneView : P.cream)}}>
+                  <div key={m.id} style={{background:"#fff",borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 2px 12px rgba(43,33,24,.08)",border:"2px solid "+(m.score>=3?P.limeade:m.score>=2?P.airplaneView:P.cream)}}>
                     <Avatar initials={m.avatar} roleKey={m.role} />
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:3}}>
                         <span style={{fontWeight:900,fontSize:14,color:P.ink}}>{m.name}</span>
                         <Pill roleKey={m.role} />
-                        {m.roleMatch && <span style={{fontSize:8,background:P.limeade + "55",color:P.monetPonds,padding:"2px 6px",borderRadius:5,fontWeight:800,fontFamily:"monospace"}}>SAME ROLE</span>}
+                        {m.roleMatch && <span style={{fontSize:8,background:P.limeade+"55",color:P.monetPonds,padding:"2px 6px",borderRadius:5,fontWeight:800,fontFamily:"monospace"}}>SAME ROLE</span>}
+                        {findMode==="manager" && isOpt(m.role) && <span style={{fontSize:8,background:P.tropicalRain+"22",color:P.tropicalRain,padding:"2px 6px",borderRadius:5,fontWeight:800,fontFamily:"monospace"}}>OPTICIAN</span>}
                       </div>
                       <div style={{fontSize:12,color:P.softInk}}>
-                        {selType === "COVER" ? "Off on " + selDay + " — available" : fmtShift(m.theirShift) + " on " + selDay}
+                        {selType==="COVER" ? "Off on "+selDay+" — available" : fmtShift(m.theirShift)+" on "+selDay}
                       </div>
                     </div>
-                    {selType === "SWAP" && m.theirShift && <DiffBadge shiftA={myShift} shiftB={m.theirShift} />}
-                    {selType === "COVER" && <span style={{fontSize:22,flexShrink:0}}>✓</span>}
+                    {selType==="SWAP" && m.theirShift && <DiffBadge shiftA={subjectShift} shiftB={m.theirShift} />}
+                    {selType==="COVER" && <span style={{fontSize:22,flexShrink:0}}>✓</span>}
                   </div>
                 );
               })}
@@ -460,11 +515,18 @@ function FindScreen({ team, currentUser, onCreateRequest }) {
           )}
 
           {suggestions.length > 0 && (
-            <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:10}}>
-              <SLabel small>4 — Note (Optional)</SLabel>
-              <textarea value={note} onChange={function(e){ setNote(e.target.value); }} placeholder="e.g. Doctor appointment..." style={{width:"100%",border:"1.5px solid " + P.cream,borderRadius:10,padding:"10px 12px",fontSize:13,resize:"none",outline:"none",background:"#fafafa",boxSizing:"border-box",height:68}} />
-              <button onClick={function(){ onCreateRequest({day:selDay,type:selType,note:note,requesterShift:myShift}); setPosted(true); }} style={{background:P.tropicalRain,color:"#fff",border:"none",borderRadius:12,padding:"14px",fontSize:15,fontWeight:900,cursor:"pointer",width:"100%"}}>
-                Post Request to Team
+            <div style={{marginTop:4,display:"flex",flexDirection:"column",gap:10}}>
+              <SLabel small>{findMode==="manager"?"5":"4"} — Note (Optional)</SLabel>
+              <textarea value={note} onChange={function(e){ setNote(e.target.value); }} placeholder={findMode==="manager"?"e.g. "+subject.name+" called out, need immediate coverage...":"e.g. Doctor appointment..."} style={{width:"100%",border:"1.5px solid "+P.cream,borderRadius:10,padding:"10px 12px",fontSize:13,resize:"none",outline:"none",background:"#fafafa",boxSizing:"border-box",height:68}} />
+              <button
+                onClick={function(){
+                  var postAs = findMode === "manager" ? subject : currentUser;
+                  onCreateRequest({day:selDay, type:selType, note:note, requesterShift:subjectShift, requesterId:postAs.id});
+                  setPosted(true);
+                }}
+                style={{background:findMode==="manager"?P.tomatoJam:P.tropicalRain,color:"#fff",border:"none",borderRadius:12,padding:"14px",fontSize:15,fontWeight:900,cursor:"pointer",width:"100%"}}
+              >
+                {findMode==="manager"?"Post Call-Out Request":"Post Request to Team"}
               </button>
             </div>
           )}
@@ -473,6 +535,7 @@ function FindScreen({ team, currentUser, onCreateRequest }) {
     </div>
   );
 }
+
 
 function ScheduleScreen({ team, currentUser, onCreateRequest }) {
   const [showModal, setShowModal] = useState(false);
@@ -1293,7 +1356,7 @@ function ShiftSwapApp() {
 
   function handleCreate(info) {
     var newId = Date.now();
-    db.ref("requests/" + newId).set({id:newId, requesterId:currentUser.id, type:info.type, day:info.day, requesterShift:info.requesterShift, note:info.note, offers:[], status:null});
+    db.ref("requests/" + newId).set({id:newId, requesterId:info.requesterId || currentUser.id, type:info.type, day:info.day, requesterShift:info.requesterShift, note:info.note, offers:[], status:null});
     handleTabChange("home");
   }
 
