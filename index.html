@@ -222,10 +222,11 @@ function Sheet({ children, onClose }) {
 
 function ReqCard({ req, team, currentUser, onRespond, isOwn }) {
   const [open, setOpen] = useState(false);
-  const requester = team.find(function(m){ return m.id === req.requesterId; });
+  const requester = team.find(function(m){ return Number(m.id) === Number(req.requesterId); });
+  if (!requester) return null;
   const myShift = currentUser.schedule[req.day];
   var rawOffers = req.offers ? (Array.isArray(req.offers) ? req.offers : Object.values(req.offers)) : [];
-  const alreadyOffered = rawOffers.find(function(o){ return o.offererId === currentUser.id; });
+  const alreadyOffered = rawOffers.find(function(o){ return Number(o.offererId) === Number(currentUser.id); });
   const hrs = shiftHours(req.requesterShift);
 
   return (
@@ -306,8 +307,8 @@ function ReqCard({ req, team, currentUser, onRespond, isOwn }) {
 }
 
 function HomeScreen({ team, requests, currentUser, onRespond }) {
-  const mine  = requests.filter(function(r){ return r.requesterId === currentUser.id; });
-  const theirs = requests.filter(function(r){ return r.requesterId !== currentUser.id; });
+  const mine  = requests.filter(function(r){ return Number(r.requesterId) === Number(currentUser.id); });
+  const theirs = requests.filter(function(r){ return Number(r.requesterId) !== Number(currentUser.id); });
 
   return (
     <div style={{padding:"20px 16px",display:"flex",flexDirection:"column",gap:24}}>
@@ -1446,7 +1447,7 @@ function ShiftSwapApp() {
     );
   }
 
-  var pendingCount = requests.filter(function(r){ return r.requesterId !== currentUser.id && !r.status; }).length;
+  var pendingCount = requests.filter(function(r){ return Number(r.requesterId) !== Number(currentUser.id) && !r.status; }).length;
   var isAdmin = currentUser.id === trueUserId && !previewMode;
 
   var tabs = [
