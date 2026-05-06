@@ -1501,7 +1501,10 @@ function ShiftSwapApp() {
     );
   }
 
-  var pendingCount = requests.filter(function(r){ return Number(r.requesterId) !== Number(currentUser.id) && !r.status; }).length;
+  var pendingCount = requests.filter(function(r){
+    var requesterExists = activeTeam.some(function(m){ return Number(m.id) === Number(r.requesterId); });
+    return Number(r.requesterId) !== Number(currentUser.id) && !r.status && requesterExists;
+  }).length;
   var isAdmin = currentUser.id === trueUserId && !previewMode;
 
   var tabs = [
