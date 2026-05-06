@@ -87,6 +87,23 @@ const ROLES = {
 
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
+function getMondayKey(date) {
+  var d = new Date(date || Date.now());
+  var day = d.getDay();
+  var diff = (day === 0 ? -6 : 1 - day);
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0,10);
+}
+
+function fmtWeekLabel(key) {
+  var d = new Date(key + "T12:00:00");
+  var sun = new Date(d); sun.setDate(d.getDate() + 6);
+  var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return months[d.getMonth()] + " " + d.getDate() + " - " + months[sun.getMonth()] + " " + sun.getDate();
+}
+
+var BLANK_SCHED = {Mon:null,Tue:null,Wed:null,Thu:null,Fri:null,Sat:null,Sun:null};
+
 const INIT_TEAM = [
   { id:1, name:"Jordan M.",   role:"STORE_LEAD",     avatar:"JM", isCurrentUser:false, schedule:{Mon:"9:00-17:00",  Tue:"9:00-17:00",  Wed:null,          Thu:"9:00-17:00",  Fri:"9:00-17:00",  Sat:null,          Sun:"10:00-18:00" }},
   { id:2, name:"Alex R.",     role:"ASST_LEAD",      avatar:"AR", isCurrentUser:false, schedule:{Mon:"10:00-18:00", Tue:null,          Wed:"10:00-18:00", Thu:"10:00-18:00", Fri:"10:00-18:00", Sat:"9:00-17:00",  Sun:null          }},
@@ -659,7 +676,7 @@ async function parseImage(base64, mediaType, apiKey) {
   return JSON.parse(text);
 }
 
-function UploadScreen({ team, setTeam }) {
+function UploadScreen({ team, setTeam, selectedWeek, setSelectedWeek, saveWeekSchedules }) {
   const [draft,     setDraft]     = useState({});
   const [saved,     setSaved]     = useState(false);
   const [openId,    setOpenId]    = useState(null);
@@ -754,37 +771,38 @@ function UploadScreen({ team, setTeam }) {
 
   function saveAll() {
     var updatedTeam = team.map(function(m){ return Object.assign({}, m); });
-    var nextId = Math.max.apply(null, team.map(function(m){ return m.id; })) + 1;
+    var nextId = team.length > 0 ? Math.max.apply(null, team.map(function(m){ return m.id; })) + 1 : 1;
+    var weekScheduleMap = {};  // memberId -> schedule for this week
 
     // Apply scan row assignments
     scanRows.forEach(function(row, i){
       var ov = overrides[i] || {};
       if (!ov.matchId || ov.matchId === "skip") return;
+      var rowSched = {Mon:row.Mon,Tue:row.Tue,Wed:row.Wed,Thu:row.Thu,Fri:row.Fri,Sat:row.Sat,Sun:row.Sun};
       if (ov.matchId === "new") {
         var form = newForms[i] || {};
         var name = ov.name || row.name;
         var initials = name.split(" ").map(function(w){ return w[0]; }).join("").toUpperCase().slice(0,2);
-        updatedTeam.push({
-          id: nextId++,
-          name: name,
-          role: form.role || "SALES_ADVISOR",
-          avatar: initials,
-          isCurrentUser: false,
-          schedule: {Mon:row.Mon,Tue:row.Tue,Wed:row.Wed,Thu:row.Thu,Fri:row.Fri,Sat:row.Sat,Sun:row.Sun}
-        });
+        var newId = nextId++;
+        updatedTeam.push({id:newId, name:name, role:form.role||"SALES_ADVISOR", avatar:initials, isCurrentUser:false, schedule:rowSched});
+        weekScheduleMap[newId] = rowSched;
       } else {
         var memberId = Number(ov.matchId);
-        var member = updatedTeam.find(function(m){ return m.id === memberId; });
-        if (member) member.schedule = {Mon:row.Mon,Tue:row.Tue,Wed:row.Wed,Thu:row.Thu,Fri:row.Fri,Sat:row.Sat,Sun:row.Sun};
+        weekScheduleMap[memberId] = rowSched;
       }
     });
 
-    // Apply manual draft edits (for members not in scan)
-    updatedTeam.forEach(function(m){
-      if (draft[m.id]) m.schedule = draft[m.id];
+    // Apply manual draft edits
+    Object.keys(draft).forEach(function(mid){
+      if (!weekScheduleMap[mid]) weekScheduleMap[mid] = draft[mid];
     });
 
+    // Save team structure (new members etc)
     setTeam(updatedTeam);
+    // Save week schedules separately
+    if (Object.keys(weekScheduleMap).length > 0) {
+      saveWeekSchedules(selectedWeek, weekScheduleMap);
+    }
     setSaved(true);
   }
 
@@ -942,6 +960,11 @@ function UploadScreen({ team, setTeam }) {
         })}
       </div>
 
+      <div style={{background:"#fff",borderRadius:12,padding:"14px 16px",border:"1.5px solid "+P.cream,display:"flex",flexDirection:"column",gap:8}}>
+        <div style={{fontSize:11,fontWeight:800,color:P.softInk,letterSpacing:".08em",fontFamily:"monospace",textTransform:"uppercase"}}>Saving to Week</div>
+        <input type="date" value={selectedWeek} onChange={function(e){ if(e.target.value) setSelectedWeek(getMondayKey(e.target.value)); }} style={{border:"1.5px solid "+P.cream,borderRadius:8,padding:"8px 12px",fontSize:13,outline:"none",background:"#fafafa"}} />
+        <div style={{fontSize:11,color:P.softInk}}>Auto-snapped to Monday · {fmtWeekLabel(selectedWeek)}</div>
+      </div>
       <button onClick={saveAll} style={{background:P.tropicalRain,color:"#fff",border:"none",borderRadius:12,padding:"15px",fontSize:15,fontWeight:900,cursor:"pointer",position:"sticky",bottom:80}}>
         Save Schedule
       </button>
@@ -1010,7 +1033,7 @@ function EditRoleSheet({ member, onSave, onClose, onRemove }) {
   );
 }
 
-function TeamScreen({ team, currentUser, setTeam, setCurrentUserId }) {
+function TeamScreen({ team, currentUser, trueUserId, setTeam, setCurrentUserId, onPreview, previewMode }) {
   const [editId,    setEditId]    = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const me = team.find(function(m){ return m.id === currentUser.id; }) || team[0];
@@ -1049,7 +1072,7 @@ function TeamScreen({ team, currentUser, setTeam, setCurrentUserId }) {
         <SLabel>Team Members</SLabel>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {team.map(function(member){
-            var isMe = member.id === currentUser.id;
+            var isMe = member.id === trueUserId;
             return (
               <div key={member.id} style={{background:"#fff",borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:10,boxShadow:"0 1px 8px rgba(43,33,24,.06)",border:"1.5px solid "+(isMe?P.tropicalRain:P.cream)}}>
                 <Avatar initials={member.avatar} roleKey={member.role} />
@@ -1061,9 +1084,14 @@ function TeamScreen({ team, currentUser, setTeam, setCurrentUserId }) {
                   <div style={{marginTop:3}}><Pill roleKey={member.role} /></div>
                 </div>
                 <div style={{display:"flex",gap:6,flexShrink:0}}>
-                  {!isMe && (
-                    <button onClick={function(){ setAsMe(member.id); }} style={{background:P.tropicalRain+"22",border:"none",borderRadius:7,padding:"5px 8px",fontSize:10,fontWeight:800,cursor:"pointer",color:P.tropicalRain}}>
+                  {!isMe && !previewMode && (
+                    <button onClick={function(){ setCurrentUserId(member.id); }} style={{background:P.tropicalRain+"22",border:"none",borderRadius:7,padding:"5px 8px",fontSize:10,fontWeight:800,cursor:"pointer",color:P.tropicalRain}}>
                       Set as Me
+                    </button>
+                  )}
+                  {member.id !== trueUserId && (
+                    <button onClick={function(){ onPreview(member.id); }} style={{background:P.pureSun+"44",border:"none",borderRadius:7,padding:"5px 8px",fontSize:10,fontWeight:800,cursor:"pointer",color:"#7D6608"}}>
+                      Preview
                     </button>
                   )}
                   <button onClick={function(){ setEditId(member.id); }} style={{background:P.cream,border:"none",borderRadius:7,padding:"5px 9px",fontSize:10,fontWeight:800,cursor:"pointer",color:P.softInk}}>
@@ -1103,24 +1131,55 @@ function TeamScreen({ team, currentUser, setTeam, setCurrentUserId }) {
   );
 }
 
+function WeekPicker({ weeks, selectedWeek, onChange }) {
+  if (!weeks || weeks.length <= 1) return null;
+  return (
+    <div style={{display:"flex",gap:6,overflowX:"auto",padding:"0 16px 10px",scrollbarWidth:"none"}}>
+      {weeks.map(function(wk){
+        var active = wk === selectedWeek;
+        return (
+          <div key={wk} onClick={function(){ onChange(wk); }} style={{flexShrink:0,padding:"5px 12px",borderRadius:20,cursor:"pointer",background:active?P.tropicalRain:"#fff",color:active?"#fff":P.softInk,fontSize:11,fontWeight:active?800:600,border:"1.5px solid "+(active?P.tropicalRain:P.cream),whiteSpace:"nowrap",fontFamily:"monospace"}}>
+            {fmtWeekLabel(wk)}{wk===getMondayKey()?" (this week)":""}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PreviewBanner({ previewUser, onExit }) {
+  return (
+    <div style={{background:P.pureSun,padding:"8px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+      <span style={{fontSize:14}}>👁</span>
+      <div style={{flex:1,fontSize:12,fontWeight:800,color:P.ink}}>Previewing as {previewUser.name}</div>
+      <button onClick={onExit} style={{background:P.ink,color:"#fff",border:"none",borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:800,cursor:"pointer"}}>Exit Preview</button>
+    </div>
+  );
+}
+
 function ShiftSwapApp() {
-  const [team,     setTeamState] = useState([]);
-  const [requests, setReqState]  = useState([]);
-  const [currentUserId, setCurrentUserId] = useState(function(){
+  const [team,           setTeamState]      = useState([]);
+  const [requests,       setReqState]       = useState([]);
+  const [schedules,      setSchedulesState] = useState({});   // { weekKey: { memberId: schedule } }
+  const [availableWeeks, setAvailableWeeks] = useState([]);
+  const [selectedWeek,   setSelectedWeek]   = useState(function(){ return getMondayKey(); });
+  const [trueUserId,     setTrueUserId]     = useState(function(){
     var stored = localStorage.getItem("ss_current_user_id");
     return stored ? Number(stored) : 8;
   });
+  const [currentUserId,  setCurrentUserId]  = useState(function(){
+    var stored = localStorage.getItem("ss_current_user_id");
+    return stored ? Number(stored) : 8;
+  });
+  const [previewMode,    setPreviewMode]    = useState(false);
   const [tab, setTab] = useState(function(){
     var hash = window.location.hash.replace("#","");
     var valid = ["home","find","sched","upload","team"];
     return valid.indexOf(hash) !== -1 ? hash : "home";
   });
+  const [loading, setLoading] = useState(true);
 
-  function handleTabChange(key) {
-    setTab(key);
-    window.location.hash = key;
-  }
-  const [loading,  setLoading]   = useState(true);
+  function handleTabChange(key) { setTab(key); window.location.hash = key; }
 
   // ── Firebase listeners ──────────────────────────────────────────────────────
   useEffect(function(){
@@ -1128,33 +1187,21 @@ function ShiftSwapApp() {
     function done() { if (!settled) { settled = true; setLoading(false); } }
     var timeout = setTimeout(done, 8000);
 
+    function normalizeTeam(val) {
+      return Object.values(val).sort(function(a,b){ return Number(a.id)-Number(b.id); }).map(function(m){
+        return Object.assign({}, m, {schedule: Object.assign({}, BLANK_SCHED, m.schedule || {})});
+      });
+    }
+
     db.ref("team").once("value", function(snap){
       if (!snap.val()) {
         var obj = {};
         INIT_TEAM.forEach(function(m){ obj[m.id] = m; });
         db.ref("team").set(obj, function(){
-          db.ref("team").on("value", function(snap2){
-            var val = snap2.val();
-            if (val) {
-              var arr = Object.values(val).sort(function(a,b){ return Number(a.id)-Number(b.id); }).map(function(m){
-              return Object.assign({}, m, {schedule: Object.assign({Mon:null,Tue:null,Wed:null,Thu:null,Fri:null,Sat:null,Sun:null}, m.schedule || {})});
-            });
-              setTeamState(arr);
-            }
-            done();
-          });
+          db.ref("team").on("value", function(s){ if(s.val()) setTeamState(normalizeTeam(s.val())); done(); });
         });
       } else {
-        db.ref("team").on("value", function(snap2){
-          var val = snap2.val();
-          if (val) {
-            var arr = Object.values(val).sort(function(a,b){ return Number(a.id)-Number(b.id); }).map(function(m){
-              return Object.assign({}, m, {schedule: Object.assign({Mon:null,Tue:null,Wed:null,Thu:null,Fri:null,Sat:null,Sun:null}, m.schedule || {})});
-            });
-            setTeamState(arr);
-          }
-          done();
-        });
+        db.ref("team").on("value", function(s){ if(s.val()) setTeamState(normalizeTeam(s.val())); done(); });
       }
     }, function(err){ console.error("team err:", err); done(); });
 
@@ -1163,37 +1210,70 @@ function ShiftSwapApp() {
         var obj = {};
         INIT_REQUESTS.forEach(function(r){ obj[r.id] = r; });
         db.ref("requests").set(obj, function(){
-          db.ref("requests").on("value", function(snap2){
-            var val = snap2.val();
-            if (val) {
-              var arr = Object.values(val).sort(function(a,b){ return Number(b.id)-Number(a.id); });
-              setReqState(arr);
-            }
-          });
+          db.ref("requests").on("value", function(s){ if(s.val()) setReqState(Object.values(s.val()).sort(function(a,b){return Number(b.id)-Number(a.id);})); });
         });
       } else {
-        db.ref("requests").on("value", function(snap2){
-          var val = snap2.val();
-          if (val) {
-            var arr = Object.values(val).sort(function(a,b){ return Number(b.id)-Number(a.id); });
-            setReqState(arr);
-          }
-        });
+        db.ref("requests").on("value", function(s){ if(s.val()) setReqState(Object.values(s.val()).sort(function(a,b){return Number(b.id)-Number(a.id);})); });
       }
     }, function(err){ console.error("requests err:", err); });
+
+    // Schedules node
+    db.ref("schedules").on("value", function(snap){
+      var val = snap.val() || {};
+      setSchedulesState(val);
+      var weeks = Object.keys(val).sort();
+      if (weeks.length > 0) {
+        setAvailableWeeks(weeks);
+        // Ensure current week is in the list
+        var thisWeek = getMondayKey();
+        if (weeks.indexOf(thisWeek) === -1) {
+          setAvailableWeeks(function(prev){
+            var merged = prev.concat([thisWeek]).sort();
+            return merged.filter(function(v,i,a){ return a.indexOf(v)===i; });
+          });
+        }
+      } else {
+        setAvailableWeeks([getMondayKey()]);
+      }
+    });
 
     return function(){
       clearTimeout(timeout);
       db.ref("team").off();
       db.ref("requests").off();
+      db.ref("schedules").off();
     };
   }, []);
+
+  // ── Compute active team with selected week's schedules applied ─────────────
+  var activeTeam = team.map(function(m){
+    var weekSched = schedules[selectedWeek] && schedules[selectedWeek][m.id];
+    var sched = weekSched ? Object.assign({}, BLANK_SCHED, weekSched) : Object.assign({}, BLANK_SCHED, m.schedule || {});
+    return Object.assign({}, m, {schedule: sched});
+  });
 
   // ── Firebase write helpers ──────────────────────────────────────────────────
   function setTeam(updatedTeam) {
     var obj = {};
     updatedTeam.forEach(function(m){ obj[m.id] = m; });
     db.ref("team").set(obj);
+  }
+
+  function saveWeekSchedules(weekKey, scheduleMap) {
+    // scheduleMap: { memberId: { Mon, Tue, ... } }
+    // Firebase drops nulls so we convert null to false for storage, back on read
+    var clean = {};
+    Object.keys(scheduleMap).forEach(function(mid){
+      var s = scheduleMap[mid];
+      clean[mid] = {};
+      DAYS.forEach(function(d){ clean[mid][d] = s[d] || null; });
+    });
+    db.ref("schedules/" + weekKey).update(clean);
+    // Update available weeks
+    setAvailableWeeks(function(prev){
+      var merged = prev.concat([weekKey]).sort();
+      return merged.filter(function(v,i,a){ return a.indexOf(v)===i; });
+    });
   }
 
   function handleRespond(action, reqId, payload) {
@@ -1213,17 +1293,25 @@ function ShiftSwapApp() {
 
   function handleCreate(info) {
     var newId = Date.now();
-    db.ref("requests/" + newId).set({
-      id: newId,
-      requesterId: currentUser.id,
-      type: info.type,
-      day: info.day,
-      requesterShift: info.requesterShift,
-      note: info.note,
-      offers: [],
-      status: null
-    });
+    db.ref("requests/" + newId).set({id:newId, requesterId:currentUser.id, type:info.type, day:info.day, requesterShift:info.requesterShift, note:info.note, offers:[], status:null});
     handleTabChange("home");
+  }
+
+  function setAsMe(id) {
+    localStorage.setItem("ss_current_user_id", String(id));
+    setTrueUserId(id);
+    setCurrentUserId(id);
+    setPreviewMode(false);
+  }
+
+  function startPreview(id) {
+    setCurrentUserId(id);
+    setPreviewMode(true);
+  }
+
+  function exitPreview() {
+    setCurrentUserId(trueUserId);
+    setPreviewMode(false);
   }
 
   // ── Loading / guard ─────────────────────────────────────────────────────────
@@ -1237,30 +1325,30 @@ function ShiftSwapApp() {
     );
   }
 
-  var currentUser = team.find(function(m){ return m.id === currentUserId; }) || team.find(function(m){ return m.isCurrentUser; }) || team[0];
+  var currentUser = activeTeam.find(function(m){ return m.id === currentUserId; }) || activeTeam[0];
   if (!currentUser) {
     return (
       <div style={{height:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",background:P.cream,flexDirection:"column",gap:16}}>
         <div style={{fontSize:36}}>⚠️</div>
         <div style={{fontWeight:800,fontSize:15,color:P.ink}}>No user found</div>
-        <div style={{fontSize:12,color:P.softInk}}>Check your database connection</div>
       </div>
     );
   }
 
   var pendingCount = requests.filter(function(r){ return r.requesterId !== currentUser.id && !r.status; }).length;
+  var isAdmin = currentUser.id === trueUserId && !previewMode;
 
-  const tabs = [
+  var tabs = [
     {key:"home",   icon:"🏠", label:"Requests"},
     {key:"find",   icon:"🔍", label:"Find"},
     {key:"sched",  icon:"📅", label:"Schedule"},
-    {key:"upload", icon:"📷", label:"Upload"},
     {key:"team",   icon:"👥", label:"Users"},
   ];
+  if (isAdmin) tabs.splice(3, 0, {key:"upload", icon:"📷", label:"Upload"});
 
   return (
     <div style={{maxWidth:480,margin:"0 auto",height:"100dvh",display:"flex",flexDirection:"column",background:P.cream,fontFamily:"sans-serif",position:"relative",overflow:"hidden"}}>
-      <div style={{background:P.cream,padding:"14px 18px 12px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+      <div style={{background:P.cream,padding:"14px 18px 10px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
         <div style={{width:36,height:36,borderRadius:10,background:P.tropicalRain,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🔄</div>
         <div style={{flex:1}}>
           <div style={{fontWeight:900,fontSize:16,color:P.ink}}>ShiftSwap</div>
@@ -1268,34 +1356,32 @@ function ShiftSwapApp() {
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {pendingCount > 0 && (
-            <div style={{background:P.tomatoJam,color:"#fff",borderRadius:"50%",width:20,height:20,fontSize:11,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              {pendingCount}
-            </div>
+            <div style={{background:P.tomatoJam,color:"#fff",borderRadius:"50%",width:20,height:20,fontSize:11,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center"}}>{pendingCount}</div>
           )}
           <Avatar initials={currentUser.avatar} roleKey={currentUser.role} size={34} />
         </div>
       </div>
 
+      {previewMode && <PreviewBanner previewUser={currentUser} onExit={exitPreview} />}
+
+      <WeekPicker weeks={availableWeeks} selectedWeek={selectedWeek} onChange={setSelectedWeek} />
+
       <div style={{flex:1,overflowY:"auto",paddingBottom:72}}>
-        {tab === "home"   && <HomeScreen     team={team} requests={requests} currentUser={currentUser} onRespond={handleRespond} />}
-        {tab === "find"   && <FindScreen     team={team} currentUser={currentUser} onCreateRequest={handleCreate} />}
-        {tab === "sched"  && <ScheduleScreen team={team} currentUser={currentUser} onCreateRequest={handleCreate} />}
-        {tab === "upload" && <UploadScreen   team={team} setTeam={setTeam} />}
-        {tab === "team"   && <TeamScreen     team={team} currentUser={currentUser} setTeam={setTeam} setCurrentUserId={setCurrentUserId} />}
+        {tab === "home"   && <HomeScreen     team={activeTeam} requests={requests} currentUser={currentUser} onRespond={handleRespond} />}
+        {tab === "find"   && <FindScreen     team={activeTeam} currentUser={currentUser} onCreateRequest={handleCreate} />}
+        {tab === "sched"  && <ScheduleScreen team={activeTeam} currentUser={currentUser} onCreateRequest={handleCreate} />}
+        {tab === "upload" && isAdmin && <UploadScreen team={activeTeam} setTeam={setTeam} selectedWeek={selectedWeek} setSelectedWeek={setSelectedWeek} saveWeekSchedules={saveWeekSchedules} />}
+        {tab === "team"   && <TeamScreen team={activeTeam} currentUser={currentUser} trueUserId={trueUserId} setTeam={setTeam} setCurrentUserId={setAsMe} onPreview={startPreview} previewMode={previewMode} />}
       </div>
 
-      <div style={{position:"absolute",bottom:0,left:0,right:0,background:"#fff",borderTop:"1.5px solid " + P.cream,display:"grid",gridTemplateColumns:"repeat(5,1fr)"}}>
+      <div style={{position:"absolute",bottom:0,left:0,right:0,background:"#fff",borderTop:"1.5px solid "+P.cream,display:"grid",gridTemplateColumns:"repeat("+tabs.length+",1fr)"}}>
         {tabs.map(function(t){
           return (
-            <button key={t.key} onClick={function(){ handleTabChange(t.key); }} style={{background:"none",border:"none",padding:"9px 2px 11px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,position:"relative",color:tab === t.key ? P.tropicalRain : P.softInk}}>
-              {t.key === "home" && pendingCount > 0 && (
-                <div style={{position:"absolute",top:6,right:"calc(50% - 14px)",background:P.tomatoJam,borderRadius:"50%",width:8,height:8}} />
-              )}
+            <button key={t.key} onClick={function(){ handleTabChange(t.key); }} style={{background:"none",border:"none",padding:"9px 2px 11px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,position:"relative",color:tab===t.key?P.tropicalRain:P.softInk}}>
+              {t.key==="home" && pendingCount>0 && <div style={{position:"absolute",top:6,right:"calc(50% - 14px)",background:P.tomatoJam,borderRadius:"50%",width:8,height:8}} />}
               <span style={{fontSize:18}}>{t.icon}</span>
-              <span style={{fontSize:9,fontWeight:tab === t.key ? 900 : 600,fontFamily:"monospace"}}>{t.label}</span>
-              {tab === t.key && (
-                <div style={{position:"absolute",bottom:0,left:"20%",right:"20%",height:2.5,background:P.tropicalRain,borderRadius:2}} />
-              )}
+              <span style={{fontSize:9,fontWeight:tab===t.key?900:600,fontFamily:"monospace"}}>{t.label}</span>
+              {tab===t.key && <div style={{position:"absolute",bottom:0,left:"20%",right:"20%",height:2.5,background:P.tropicalRain,borderRadius:2}} />}
             </button>
           );
         })}
@@ -1303,7 +1389,6 @@ function ShiftSwapApp() {
     </div>
   );
 }
-
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(ShiftSwapApp));
