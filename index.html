@@ -661,14 +661,16 @@ function UploadScreen({ team, setTeam }) {
   const [scanError, setScanError] = useState(null);
   const [scanDone,  setScanDone]  = useState(false);
   const [scanRows,  setScanRows]  = useState([]);
-  const fileRef = useRef();
+  // rowOverrides: { [i]: { name, matchId } }  matchId = team member id, "new", or "skip"
+  const [overrides, setOverrides] = useState({});
+  // newMember forms: { [i]: { role } }
+  const [newForms,  setNewForms]  = useState({});
 
-  // Keep draft in sync when team loads from Firebase
   useEffect(function(){
     if (team && team.length > 0) {
-      var initDraft = {};
-      team.forEach(function(m){ initDraft[m.id] = Object.assign({}, m.schedule); });
-      setDraft(initDraft);
+      var draftReady = {};
+      team.forEach(function(m){ draftReady[m.id] = Object.assign({}, m.schedule); });
+      setDraft(draftReady);
     }
   }, [team.length]);
 
@@ -678,7 +680,7 @@ function UploadScreen({ team, setTeam }) {
     var file = e.target.files[0];
     if (!file) { setScanError("No file selected."); return; }
     if (!apiKey.trim()) { setScanError("Enter your Anthropic API key first."); return; }
-    setScanError(null); setScanning(true); setScanDone(false); setScanRows([]);
+    setScanError(null); setScanning(true); setScanDone(false); setScanRows([]); setOverrides({}); setNewForms({});
     var reader = new FileReader();
     reader.onerror = function(){ setScanError("Could not read file."); setScanning(false); };
     reader.onload = function() {
@@ -687,22 +689,47 @@ function UploadScreen({ team, setTeam }) {
       parseImage(b64, file.type, apiKey.trim())
         .then(function(rows){
           if (!rows || !rows.length) { setScanError("No schedule data found in image."); return; }
+          // Build initial overrides based on auto-match
+          var initOverrides = {};
+          rows.forEach(function(row, i){
+            var match = team.find(function(m){ return m.name.toLowerCase().includes(row.name.split(" ")[0].toLowerCase()); });
+            initOverrides[i] = { name: row.name, matchId: match ? String(match.id) : "skip" };
+          });
+          setScanRows(rows);
+          setOverrides(initOverrides);
+          // Update draft from auto-matched rows
           setDraft(function(prev){
             var next = Object.assign({}, prev);
-            rows.forEach(function(row){
-              var match = team.find(function(m){
-                return m.name.toLowerCase().includes(row.name.split(" ")[0].toLowerCase());
-              });
+            rows.forEach(function(row, i){
+              var match = team.find(function(m){ return m.name.toLowerCase().includes(row.name.split(" ")[0].toLowerCase()); });
               if (match) next[match.id] = {Mon:row.Mon,Tue:row.Tue,Wed:row.Wed,Thu:row.Thu,Fri:row.Fri,Sat:row.Sat,Sun:row.Sun};
             });
             return next;
           });
-          setScanRows(rows); setScanDone(true); setSaved(false);
+          setScanDone(true); setSaved(false);
         })
         .catch(function(err){ setScanError("Error: " + (err.message || "Could not read schedule.")); })
         .finally(function(){ setScanning(false); });
     };
     reader.readAsDataURL(file);
+  }
+
+  function setOverride(i, field, val) {
+    setOverrides(function(prev){
+      var next = Object.assign({}, prev);
+      next[i] = Object.assign({}, next[i], {});
+      next[i][field] = val;
+      return next;
+    });
+  }
+
+  function setNewForm(i, field, val) {
+    setNewForms(function(prev){
+      var next = Object.assign({}, prev);
+      next[i] = Object.assign({}, next[i] || {role:"SALES_ADVISOR"}, {});
+      next[i][field] = val;
+      return next;
+    });
   }
 
   function setShift(memberId, day, val) {
@@ -718,12 +745,42 @@ function UploadScreen({ team, setTeam }) {
   function clearShift(memberId, day) { setShift(memberId, day, null); }
 
   function saveAll() {
-    var updated = team.map(function(m){
-      return Object.assign({}, m, {schedule: draft[m.id] || m.schedule});
+    var updatedTeam = team.map(function(m){ return Object.assign({}, m); });
+    var nextId = Math.max.apply(null, team.map(function(m){ return m.id; })) + 1;
+
+    // Apply scan row assignments
+    scanRows.forEach(function(row, i){
+      var ov = overrides[i] || {};
+      if (!ov.matchId || ov.matchId === "skip") return;
+      if (ov.matchId === "new") {
+        var form = newForms[i] || {};
+        var name = ov.name || row.name;
+        var initials = name.split(" ").map(function(w){ return w[0]; }).join("").toUpperCase().slice(0,2);
+        updatedTeam.push({
+          id: nextId++,
+          name: name,
+          role: form.role || "SALES_ADVISOR",
+          avatar: initials,
+          isCurrentUser: false,
+          schedule: {Mon:row.Mon,Tue:row.Tue,Wed:row.Wed,Thu:row.Thu,Fri:row.Fri,Sat:row.Sat,Sun:row.Sun}
+        });
+      } else {
+        var memberId = Number(ov.matchId);
+        var member = updatedTeam.find(function(m){ return m.id === memberId; });
+        if (member) member.schedule = {Mon:row.Mon,Tue:row.Tue,Wed:row.Wed,Thu:row.Thu,Fri:row.Fri,Sat:row.Sat,Sun:row.Sun};
+      }
     });
-    setTeam(updated);
+
+    // Apply manual draft edits (for members not in scan)
+    updatedTeam.forEach(function(m){
+      if (draft[m.id]) m.schedule = draft[m.id];
+    });
+
+    setTeam(updatedTeam);
     setSaved(true);
   }
+
+  var selStyle = {border:"1.5px solid "+P.cream,borderRadius:7,padding:"5px 8px",fontSize:11,background:"#fafafa",color:P.ink,outline:"none",fontFamily:"sans-serif"};
 
   return (
     <div style={{padding:"20px 16px",display:"flex",flexDirection:"column",gap:20}}>
@@ -749,51 +806,70 @@ function UploadScreen({ team, setTeam }) {
         {apiKey && apiKey.startsWith("sk-ant-") && (
           <div style={{fontSize:11,fontWeight:800,color:P.monetPonds}}>Key saved to this device</div>
         )}
-        <label
-          style={{border:"2px dashed "+P.airplaneView,borderRadius:12,padding:"18px",textAlign:"center",cursor:"pointer",background:P.airplaneView+"12",opacity:apiKey.trim()?1:0.45,display:"block"}}
-        >
+        <label style={{border:"2px dashed "+P.airplaneView,borderRadius:12,padding:"18px",textAlign:"center",cursor:"pointer",background:P.airplaneView+"12",opacity:apiKey.trim()?1:0.45,display:"block"}}>
           <div style={{fontSize:26,marginBottom:6}}>📷</div>
           <div style={{fontWeight:800,fontSize:13,color:P.ink}}>{scanning ? "Reading with AI..." : "Tap to scan schedule photo"}</div>
           <div style={{fontSize:11,color:P.softInk,marginTop:3}}>PNG · JPG · HEIC</div>
           <input type="file" accept="image/*" style={{display:"none"}} onChange={handleFile} />
         </label>
-        {scanDone && (
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            <div style={{fontSize:11,fontWeight:800,color:P.monetPonds,marginBottom:4}}>
-              {scanRows.length > 0 ? "Scan complete — review shifts below, then Save." : "Scan complete — shifts updated. Tap Save to apply."}
-            </div>
-            {scanRows.length > 0 && (
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                <div style={{fontSize:10,fontWeight:800,color:P.softInk,letterSpacing:".08em",fontFamily:"monospace",textTransform:"uppercase"}}>Detected Schedules</div>
-                {scanRows.map(function(row, i){
-                  var match = team.find(function(m){ return m.name.toLowerCase().includes(row.name.split(" ")[0].toLowerCase()); });
-                  return (
-                    <div key={i} style={{background:match?"#fff":P.autumnLavender+"44",borderRadius:10,padding:"10px 14px",border:"1.5px solid "+(match?P.limeade:P.autumnLavender)}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                        {match && <Avatar initials={match.avatar} roleKey={match.role} size={24} />}
-                        <div style={{fontWeight:800,fontSize:13,color:P.ink}}>{row.name}</div>
-                        <span style={{fontSize:10,fontFamily:"monospace",fontWeight:700,color:match?P.monetPonds:P.tomatoJam}}>{match?"MATCHED":"NO MATCH"}</span>
-                      </div>
-                      <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
-                        {DAYS.map(function(d){
-                          return (
-                            <div key={d} style={{background:row[d]?P.tropicalRain+"18":P.cream,borderRadius:5,padding:"2px 7px",fontSize:9,fontFamily:"monospace",color:row[d]?P.tropicalRain:P.softInk}}>
-                              {d}: {row[d]?fmtShift(row[d]):"off"}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-                <div style={{fontSize:11,color:P.softInk,lineHeight:1.5}}>NO MATCH rows were not recognized — check name spelling matches the team list.</div>
-              </div>
-            )}
-          </div>
-        )}
         {scanError && <div style={{fontSize:12,color:P.tomatoJam,background:P.peonyBundle+"55",borderRadius:8,padding:"8px 12px"}}>{scanError}</div>}
         <div style={{fontSize:11,color:P.softInk,lineHeight:1.5}}>Get a key free at <strong>console.anthropic.com</strong>. Under $0.01 per scan. Saved locally only.</div>
       </div>
+
+      {scanDone && scanRows.length > 0 && (
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{fontSize:11,fontWeight:800,color:P.softInk,letterSpacing:".08em",fontFamily:"monospace",textTransform:"uppercase"}}>Review Detected Schedules</div>
+          <div style={{fontSize:12,color:P.softInk,lineHeight:1.5}}>Fix any names, assign each person to a team member, or add them as new. Rows set to Skip will be ignored.</div>
+          {scanRows.map(function(row, i){
+            var ov = overrides[i] || {name:row.name, matchId:"skip"};
+            var assignedMember = ov.matchId && ov.matchId !== "skip" && ov.matchId !== "new"
+              ? team.find(function(m){ return m.id === Number(ov.matchId); })
+              : null;
+            var isNew = ov.matchId === "new";
+            var isSkip = !ov.matchId || ov.matchId === "skip";
+            var nf = newForms[i] || {role:"SALES_ADVISOR"};
+            return (
+              <div key={i} style={{background:"#fff",borderRadius:12,padding:"14px 16px",border:"1.5px solid "+(assignedMember?P.limeade:isNew?P.airplaneView:P.cream),boxShadow:"0 1px 8px rgba(43,33,24,.06)",opacity:isSkip?0.55:1}}>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    {assignedMember && <Avatar initials={assignedMember.avatar} roleKey={assignedMember.role} size={26} />}
+                    <input
+                      value={ov.name}
+                      onChange={function(e){ setOverride(i, "name", e.target.value); }}
+                      style={{flex:1,border:"1.5px solid "+P.cream,borderRadius:7,padding:"6px 10px",fontSize:13,fontWeight:800,color:P.ink,background:"#fafafa",outline:"none",minWidth:0}}
+                    />
+                  </div>
+                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                    <div style={{fontSize:11,color:P.softInk,flexShrink:0}}>Assign to:</div>
+                    <select value={ov.matchId} onChange={function(e){ setOverride(i,"matchId",e.target.value); }} style={Object.assign({},selStyle,{flex:1})}>
+                      <option value="skip">-- Skip --</option>
+                      {team.map(function(m){ return <option key={m.id} value={String(m.id)}>{m.name}</option>; })}
+                      <option value="new">+ Add as new member</option>
+                    </select>
+                  </div>
+                  {isNew && (
+                    <div style={{display:"flex",gap:8,alignItems:"center",background:P.airplaneView+"18",borderRadius:8,padding:"8px 10px"}}>
+                      <div style={{fontSize:11,color:P.softInk,flexShrink:0}}>Role:</div>
+                      <select value={nf.role} onChange={function(e){ setNewForm(i,"role",e.target.value); }} style={selStyle}>
+                        {Object.entries(ROLES).map(function([k,r]){ return <option key={k} value={k}>{r.label}</option>; })}
+                      </select>
+                    </div>
+                  )}
+                  <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                    {DAYS.map(function(d){
+                      return (
+                        <div key={d} style={{background:row[d]?P.tropicalRain+"18":P.cream,borderRadius:5,padding:"2px 7px",fontSize:9,fontFamily:"monospace",color:row[d]?P.tropicalRain:P.softInk}}>
+                          {d}: {row[d]?fmtShift(row[d]):"off"}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {saved && (
         <div style={{background:P.limeade+"44",borderRadius:12,padding:"12px 16px",color:P.monetPonds,fontSize:13,fontWeight:800}}>
@@ -802,14 +878,15 @@ function UploadScreen({ team, setTeam }) {
       )}
 
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        <div style={{fontSize:11,fontWeight:800,color:P.softInk,letterSpacing:".08em",fontFamily:"monospace",textTransform:"uppercase"}}>Manual Edits</div>
         {team.map(function(member){
           var r = ROLES[member.role] || ROLES.SALES_ADVISOR;
           var memberDraft = draft[member.id] || {};
           var worksCount = DAYS.filter(function(d){ return memberDraft[d]; }).length;
           var isOpen = openId === member.id;
           return (
-            <div key={member.id} style={{background:"#fff",borderRadius:14,overflow:"hidden",boxShadow:"0 2px 10px rgba(43,33,24,.07)",border:"1.5px solid "+(isOpen ? r.bg : P.cream)}}>
-              <div onClick={function(){ setOpenId(isOpen ? null : member.id); }} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",cursor:"pointer"}}>
+            <div key={member.id} style={{background:"#fff",borderRadius:14,overflow:"hidden",boxShadow:"0 2px 10px rgba(43,33,24,.07)",border:"1.5px solid "+(isOpen?r.bg:P.cream)}}>
+              <div onClick={function(){ setOpenId(isOpen?null:member.id); }} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",cursor:"pointer"}}>
                 <Avatar initials={member.avatar} roleKey={member.role} />
                 <div style={{flex:1}}>
                   <div style={{fontWeight:900,fontSize:14,color:P.ink}}>{member.name}</div>
@@ -818,7 +895,7 @@ function UploadScreen({ team, setTeam }) {
                     <span style={{fontSize:11,color:P.softInk}}>{worksCount} day{worksCount!==1?"s":""} this week</span>
                   </div>
                 </div>
-                <span style={{color:"#ccc",fontSize:12}}>{isOpen ? "▲" : "▼"}</span>
+                <span style={{color:"#ccc",fontSize:12}}>{isOpen?"▲":"▼"}</span>
               </div>
               {isOpen && (
                 <div style={{borderTop:"1.5px solid "+P.cream,padding:"14px 16px",background:P.cream+"55",display:"flex",flexDirection:"column",gap:10}}>
@@ -829,7 +906,7 @@ function UploadScreen({ team, setTeam }) {
                         <div style={{display:"flex",alignItems:"center",gap:10}}>
                           <div style={{width:36,fontSize:11,fontWeight:800,color:P.softInk,fontFamily:"monospace"}}>{day}</div>
                           {!shift ? (
-                            <button onClick={function(){ setShift(member.id, day, "9:00-17:00"); }} style={{background:P.airplaneView+"33",border:"1.5px dashed "+P.airplaneView,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",color:P.tropicalRain}}>
+                            <button onClick={function(){ setShift(member.id,day,"9:00-17:00"); }} style={{background:P.airplaneView+"33",border:"1.5px dashed "+P.airplaneView,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",color:P.tropicalRain}}>
                               + Add shift
                             </button>
                           ) : (
@@ -843,8 +920,8 @@ function UploadScreen({ team, setTeam }) {
                         {shift && (
                           <ShiftEditor
                             value={shift}
-                            onChange={function(val){ setShift(member.id, day, val); }}
-                            onClear={function(){ clearShift(member.id, day); }}
+                            onChange={function(val){ setShift(member.id,day,val); }}
+                            onClear={function(){ clearShift(member.id,day); }}
                           />
                         )}
                       </div>
@@ -883,6 +960,7 @@ function UploadScreen({ team, setTeam }) {
     </div>
   );
 }
+
 
 function EditRoleSheet({ member, onSave, onClose }) {
   return (
