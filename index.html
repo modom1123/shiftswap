@@ -1332,7 +1332,16 @@ function ShiftSwapApp() {
     // Schedules node
     db.ref("schedules").on("value", function(snap){
       var val = snap.val() || {};
-      setSchedulesState(val);
+      // Normalize: ensure each week's member schedules have all 7 days
+      var normalized = {};
+      Object.keys(val).forEach(function(weekKey){
+        normalized[weekKey] = {};
+        Object.keys(val[weekKey]).forEach(function(mid){
+          normalized[weekKey][mid] = Object.assign({}, BLANK_SCHED, val[weekKey][mid] || {});
+        });
+      });
+      setSchedulesState(normalized);
+      console.log("Schedules loaded:", Object.keys(normalized));
       var weeks = Object.keys(val).sort();
       if (weeks.length > 0) {
         setAvailableWeeks(weeks);
@@ -1359,8 +1368,20 @@ function ShiftSwapApp() {
 
   // ── Compute active team with selected week's schedules applied ─────────────
   var activeTeam = team.map(function(m){
-    var weekSched = schedules[selectedWeek] && schedules[selectedWeek][m.id];
-    var sched = weekSched ? Object.assign({}, BLANK_SCHED, weekSched) : Object.assign({}, BLANK_SCHED, m.schedule || {});
+    var weekData = schedules[selectedWeek];
+    // Try both number and string key (Firebase stores keys as strings)
+    var weekSched = weekData && (weekData[m.id] || weekData[String(m.id)]);
+    var sched;
+    if (weekSched) {
+      // Found week-specific schedule
+      sched = Object.assign({}, BLANK_SCHED, weekSched);
+    } else if (weekData) {
+      // Week exists in Firebase but this member has no data for it — show blank
+      sched = Object.assign({}, BLANK_SCHED);
+    } else {
+      // Week hasn't been uploaded yet — fall back to most recent schedule
+      sched = Object.assign({}, BLANK_SCHED, m.schedule || {});
+    }
     return Object.assign({}, m, {schedule: sched});
   });
 
@@ -1372,16 +1393,17 @@ function ShiftSwapApp() {
   }
 
   function saveWeekSchedules(weekKey, scheduleMap) {
-    // scheduleMap: { memberId: { Mon, Tue, ... } }
-    // Firebase drops nulls so we convert null to false for storage, back on read
     var clean = {};
     Object.keys(scheduleMap).forEach(function(mid){
-      var s = scheduleMap[mid];
-      clean[mid] = {};
-      DAYS.forEach(function(d){ clean[mid][d] = s[d] || null; });
+      var s = scheduleMap[mid] || {};
+      // Use string key explicitly; store "OFF" for null days so Firebase keeps them
+      clean[String(mid)] = {};
+      DAYS.forEach(function(d){ clean[String(mid)][d] = s[d] || null; });
     });
-    db.ref("schedules/" + weekKey).update(clean);
-    // Update available weeks
+    db.ref("schedules/" + weekKey).update(clean, function(err){
+      if (err) { console.error("saveWeekSchedules error:", err); }
+      else { console.log("Saved week", weekKey, "for members:", Object.keys(clean)); }
+    });
     setAvailableWeeks(function(prev){
       var merged = prev.concat([weekKey]).sort();
       return merged.filter(function(v,i,a){ return a.indexOf(v)===i; });
@@ -1437,12 +1459,47 @@ function ShiftSwapApp() {
     );
   }
 
-  var currentUser = activeTeam.find(function(m){ return m.id === currentUserId; }) || activeTeam[0];
+  var currentUser = activeTeam.find(function(m){ return Number(m.id) === Number(currentUserId); });
+
+  // No match — show identity picker so user can select themselves
+  if (!currentUser && activeTeam.length > 0) {
+    return (
+      <div style={{maxWidth:480,margin:"0 auto",height:"100dvh",display:"flex",flexDirection:"column",background:P.cream,fontFamily:"sans-serif"}}>
+        <div style={{flex:1,overflowY:"auto",padding:"40px 24px 32px",display:"flex",flexDirection:"column",gap:20}}>
+          <div style={{textAlign:"center",marginBottom:4}}>
+            <div style={{fontSize:44,marginBottom:12}}>👋</div>
+            <div style={{fontWeight:900,fontSize:24,color:P.ink}}>Who are you?</div>
+            <div style={{fontSize:14,color:P.softInk,marginTop:8,lineHeight:1.5}}>Select your name to get started. Saved on this device.</div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {activeTeam.map(function(m){
+              return (
+                <div key={m.id} onClick={function(){
+                  localStorage.setItem("ss_current_user_id", String(m.id));
+                  setTrueUserId(m.id);
+                  setCurrentUserId(m.id);
+                }} style={{background:"#fff",borderRadius:14,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,cursor:"pointer",boxShadow:"0 2px 12px rgba(43,33,24,.08)",border:"1.5px solid "+P.cream}}>
+                  <Avatar initials={m.avatar} roleKey={m.role} size={44} />
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:900,fontSize:16,color:P.ink}}>{m.name}</div>
+                    <div style={{marginTop:4}}><Pill roleKey={m.role} /></div>
+                  </div>
+                  <span style={{fontSize:22,color:P.autumnLavender}}>→</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Still loading team
   if (!currentUser) {
     return (
       <div style={{height:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",background:P.cream,flexDirection:"column",gap:16}}>
-        <div style={{fontSize:36}}>⚠️</div>
-        <div style={{fontWeight:800,fontSize:15,color:P.ink}}>No user found</div>
+        <div style={{fontSize:36}}>⏳</div>
+        <div style={{fontWeight:800,fontSize:15,color:P.ink}}>Loading team...</div>
       </div>
     );
   }
