@@ -1287,7 +1287,7 @@ function ShiftSwapApp() {
   const [tab, setTab] = useState(function(){
     var hash = window.location.hash.replace("#","");
     var valid = ["home","find","sched","upload","team"];
-    return valid.indexOf(hash) !== -1 ? hash : "home";
+    return valid.indexOf(hash) !== -1 ? hash : "sched";
   });
   const [loading, setLoading] = useState(true);
 
@@ -1508,7 +1508,7 @@ function ShiftSwapApp() {
   var isAdmin = currentUser.id === trueUserId && !previewMode;
 
   var tabs = [
-    {key:"home",   icon:"🏠", label:"Requests"},
+    {key:"home",   icon:"❓", label:"Requests"},
     {key:"find",   icon:"🔍", label:"Find"},
     {key:"sched",  icon:"📅", label:"Schedule"},
     {key:"team",   icon:"👥", label:"Users"},
