@@ -95,6 +95,15 @@ function getMondayKey(date) {
   return d.toISOString().slice(0,10);
 }
 
+function getDayDate(weekKey, dayName) {
+  // Returns "Mon 5/6" style label for a given week's day
+  var dayIndex = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].indexOf(dayName);
+  if (dayIndex === -1 || !weekKey) return dayName;
+  var d = new Date(weekKey + "T12:00:00");
+  d.setDate(d.getDate() + dayIndex);
+  return dayName + " " + (d.getMonth()+1) + "/" + d.getDate();
+}
+
 function fmtWeekLabel(key) {
   var d = new Date(key + "T12:00:00");
   var sun = new Date(d); sun.setDate(d.getDate() + 6);
@@ -215,7 +224,8 @@ function ReqCard({ req, team, currentUser, onRespond, isOwn }) {
   const [open, setOpen] = useState(false);
   const requester = team.find(function(m){ return m.id === req.requesterId; });
   const myShift = currentUser.schedule[req.day];
-  const alreadyOffered = req.offers && req.offers.find(function(o){ return o.offererId === currentUser.id; });
+  var rawOffers = req.offers ? (Array.isArray(req.offers) ? req.offers : Object.values(req.offers)) : [];
+  const alreadyOffered = rawOffers.find(function(o){ return o.offererId === currentUser.id; });
   const hrs = shiftHours(req.requesterShift);
 
   return (
@@ -242,11 +252,11 @@ function ReqCard({ req, team, currentUser, onRespond, isOwn }) {
           {req.note && (
             <div style={{fontSize:12,color:P.softInk,fontStyle:"italic"}}>"{req.note}"</div>
           )}
-          {req.offers && req.offers.length > 0 && (
+          {rawOffers.length > 0 && (
             <div>
               <SLabel small>Offers</SLabel>
               <div style={{display:"flex",flexDirection:"column",gap:7}}>
-                {req.offers.map(function(offer, i){
+                {rawOffers.map(function(offer, i){
                   const offerer = team.find(function(m){ return m.id === offer.offererId; });
                   return (
                     <div key={i} style={{background:"#fff",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:10,border:"1.5px solid " + P.cream}}>
@@ -537,7 +547,7 @@ function FindScreen({ team, currentUser, onCreateRequest }) {
 }
 
 
-function ScheduleScreen({ team, currentUser, onCreateRequest }) {
+function ScheduleScreen({ team, currentUser, onCreateRequest, selectedWeek, setSelectedWeek, availableWeeks }) {
   const [showModal, setShowModal] = useState(false);
   const [selDay,    setSelDay]    = useState(null);
   const [reqType,   setReqType]   = useState(null);
@@ -546,7 +556,38 @@ function ScheduleScreen({ team, currentUser, onCreateRequest }) {
   return (
     <div style={{padding:"20px 16px",display:"flex",flexDirection:"column",gap:22}}>
       <div>
-        <SLabel>My Week — Tap to Request</SLabel>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:800,color:P.softInk,letterSpacing:".1em",fontFamily:"monospace",textTransform:"uppercase"}}>My Week — Tap to Request</div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <button onClick={function(){
+              if (!selectedWeek) return;
+              var idx = availableWeeks.indexOf(selectedWeek);
+              if (idx > 0) setSelectedWeek(availableWeeks[idx-1]);
+              else {
+                var d = new Date(selectedWeek+"T12:00:00"); d.setDate(d.getDate()-7);
+                var prev = getMondayKey(d);
+                setSelectedWeek(prev);
+              }
+            }} style={{background:"#fff",border:"1.5px solid "+P.cream,borderRadius:8,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:14,color:P.softInk}}>
+              ←
+            </button>
+            <span style={{fontSize:10,fontFamily:"monospace",color:P.softInk,minWidth:90,textAlign:"center"}}>
+              {selectedWeek ? fmtWeekLabel(selectedWeek) : "This week"}
+            </span>
+            <button onClick={function(){
+              if (!selectedWeek) return;
+              var idx = availableWeeks.indexOf(selectedWeek);
+              if (idx >= 0 && idx < availableWeeks.length-1) setSelectedWeek(availableWeeks[idx+1]);
+              else {
+                var d = new Date(selectedWeek+"T12:00:00"); d.setDate(d.getDate()+7);
+                var next = getMondayKey(d);
+                setSelectedWeek(next);
+              }
+            }} style={{background:"#fff",border:"1.5px solid "+P.cream,borderRadius:8,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:14,color:P.softInk}}>
+              →
+            </button>
+          </div>
+        </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
           {DAYS.map(function(day){
             const shift = currentUser.schedule[day];
@@ -879,30 +920,34 @@ function UploadScreen({ team, setTeam, selectedWeek, setSelectedWeek, saveWeekSc
       </div>
 
       <div style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid "+P.cream,display:"flex",flexDirection:"column",gap:10}}>
-        <div style={{fontSize:11,fontWeight:800,color:P.softInk,letterSpacing:".08em",fontFamily:"monospace",textTransform:"uppercase"}}>Scan Schedule Photo (Optional)</div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <input
-            type={showKey ? "text" : "password"}
-            value={apiKey}
-            onChange={function(e){ saveKey(e.target.value); }}
-            placeholder="Anthropic API key — sk-ant-..."
-            style={{flex:1,border:"1.5px solid "+P.cream,borderRadius:8,padding:"9px 12px",fontSize:12,outline:"none",background:"#fafafa",minWidth:0}}
-          />
-          <button onClick={function(){ setShowKey(!showKey); }} style={{background:P.cream,border:"none",borderRadius:8,padding:"9px 10px",fontSize:11,fontWeight:700,cursor:"pointer",color:P.softInk,flexShrink:0}}>
-            {showKey ? "Hide" : "Show"}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+          <div style={{fontSize:11,fontWeight:800,color:P.softInk,letterSpacing:".08em",fontFamily:"monospace",textTransform:"uppercase"}}>Scan Schedule Photo</div>
+          <button onClick={function(){ setShowKey(!showKey); }} style={{background:"none",border:"none",fontSize:11,color:P.softInk,cursor:"pointer",textDecoration:"underline",padding:0}}>
+            {showKey ? "Done" : (apiKey ? "Change API Key" : "Set API Key")}
           </button>
         </div>
-        {apiKey && apiKey.startsWith("sk-ant-") && (
-          <div style={{fontSize:11,fontWeight:800,color:P.monetPonds}}>Key saved to this device</div>
+        {showKey && (
+          <div style={{display:"flex",flexDirection:"column",gap:8,background:P.cream,borderRadius:10,padding:"12px"}}>
+            <div style={{fontSize:11,color:P.softInk,lineHeight:1.5}}>Enter your Anthropic API key from <strong>console.anthropic.com</strong>. Saved locally only, under $0.01 per scan.</div>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={function(e){ saveKey(e.target.value); }}
+              placeholder="sk-ant-..."
+              style={{border:"1.5px solid "+P.autumnLavender,borderRadius:8,padding:"9px 12px",fontSize:12,outline:"none",background:"#fff"}}
+            />
+            {apiKey && apiKey.startsWith("sk-ant-") && (
+              <div style={{fontSize:11,fontWeight:800,color:P.monetPonds}}>Key saved</div>
+            )}
+          </div>
         )}
-        <label style={{border:"2px dashed "+P.airplaneView,borderRadius:12,padding:"18px",textAlign:"center",cursor:"pointer",background:P.airplaneView+"12",opacity:apiKey.trim()?1:0.45,display:"block"}}>
-          <div style={{fontSize:26,marginBottom:6}}>📷</div>
+        <label style={{border:"2px dashed "+P.airplaneView,borderRadius:12,padding:"22px 18px",textAlign:"center",cursor:"pointer",background:P.airplaneView+"12",opacity:apiKey.trim()?1:0.45,display:"block"}}>
+          <div style={{fontSize:28,marginBottom:6}}>{scanning ? "⏳" : "📷"}</div>
           <div style={{fontWeight:800,fontSize:13,color:P.ink}}>{scanning ? "Reading with AI..." : "Tap to scan schedule photo"}</div>
-          <div style={{fontSize:11,color:P.softInk,marginTop:3}}>PNG · JPG · HEIC</div>
+          <div style={{fontSize:11,color:P.softInk,marginTop:3}}>{apiKey ? "PNG · JPG · HEIC" : "API key required — tap Change API Key above"}</div>
           <input type="file" accept="image/*" style={{display:"none"}} onChange={handleFile} />
         </label>
         {scanError && <div style={{fontSize:12,color:P.tomatoJam,background:P.peonyBundle+"55",borderRadius:8,padding:"8px 12px"}}>{scanError}</div>}
-        <div style={{fontSize:11,color:P.softInk,lineHeight:1.5}}>Get a key free at <strong>console.anthropic.com</strong>. Under $0.01 per scan. Saved locally only.</div>
       </div>
 
       {scanDone && scanRows.length > 0 && (
@@ -967,7 +1012,10 @@ function UploadScreen({ team, setTeam, selectedWeek, setSelectedWeek, saveWeekSc
       )}
 
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        <div style={{fontSize:11,fontWeight:800,color:P.softInk,letterSpacing:".08em",fontFamily:"monospace",textTransform:"uppercase"}}>Manual Edits</div>
+        <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
+          <div style={{fontSize:11,fontWeight:800,color:P.softInk,letterSpacing:".08em",fontFamily:"monospace",textTransform:"uppercase"}}>Manual Edits</div>
+          {selectedWeek && <div style={{fontSize:10,color:P.tropicalRain,fontFamily:"monospace",fontWeight:700}}>Week of {fmtWeekLabel(selectedWeek)}</div>}
+        </div>
         {team.map(function(member){
           var r = ROLES[member.role] || ROLES.SALES_ADVISOR;
           var memberDraft = draft[member.id] || {};
@@ -993,7 +1041,7 @@ function UploadScreen({ team, setTeam, selectedWeek, setSelectedWeek, saveWeekSc
                     return (
                       <div key={day} style={{display:"flex",flexDirection:"column"}}>
                         <div style={{display:"flex",alignItems:"center",gap:10}}>
-                          <div style={{width:36,fontSize:11,fontWeight:800,color:P.softInk,fontFamily:"monospace"}}>{day}</div>
+                          <div style={{minWidth:60,fontSize:11,fontWeight:800,color:P.softInk,fontFamily:"monospace",lineHeight:1.2}}>{getDayDate(selectedWeek, day)}</div>
                           {!shift ? (
                             <button onClick={function(){ setShift(member.id,day,"9:00-17:00"); }} style={{background:P.airplaneView+"33",border:"1.5px dashed "+P.airplaneView,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",color:P.tropicalRain}}>
                               + Add shift
@@ -1024,7 +1072,7 @@ function UploadScreen({ team, setTeam, selectedWeek, setSelectedWeek, saveWeekSc
       </div>
 
       <div style={{background:"#fff",borderRadius:12,padding:"14px 16px",border:"1.5px solid "+P.cream,display:"flex",flexDirection:"column",gap:8}}>
-        <div style={{fontSize:11,fontWeight:800,color:P.softInk,letterSpacing:".08em",fontFamily:"monospace",textTransform:"uppercase"}}>Saving to Week</div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{fontSize:11,fontWeight:800,color:P.softInk,letterSpacing:".08em",fontFamily:"monospace",textTransform:"uppercase"}}>Saving to Week</div>{selectedWeek && <div style={{fontSize:11,color:P.tropicalRain,fontWeight:700,fontFamily:"monospace"}}>{fmtWeekLabel(selectedWeek)}</div>}</div>
         <input type="date" value={selectedWeek} onChange={function(e){ if(e.target.value) setSelectedWeek(getMondayKey(e.target.value)); }} style={{border:"1.5px solid "+P.cream,borderRadius:8,padding:"8px 12px",fontSize:13,outline:"none",background:"#fafafa"}} />
         <div style={{fontSize:11,color:P.softInk}}>Auto-snapped to Monday · {fmtWeekLabel(selectedWeek)}</div>
       </div>
@@ -1432,7 +1480,7 @@ function ShiftSwapApp() {
       <div style={{flex:1,overflowY:"auto",paddingBottom:72}}>
         {tab === "home"   && <HomeScreen     team={activeTeam} requests={requests} currentUser={currentUser} onRespond={handleRespond} />}
         {tab === "find"   && <FindScreen     team={activeTeam} currentUser={currentUser} onCreateRequest={handleCreate} />}
-        {tab === "sched"  && <ScheduleScreen team={activeTeam} currentUser={currentUser} onCreateRequest={handleCreate} />}
+        {tab === "sched"  && <ScheduleScreen team={activeTeam} currentUser={currentUser} onCreateRequest={handleCreate} selectedWeek={selectedWeek} setSelectedWeek={setSelectedWeek} availableWeeks={availableWeeks} />}
         {tab === "upload" && isAdmin && <UploadScreen team={activeTeam} setTeam={setTeam} selectedWeek={selectedWeek} setSelectedWeek={setSelectedWeek} saveWeekSchedules={saveWeekSchedules} />}
         {tab === "team"   && <TeamScreen team={activeTeam} currentUser={currentUser} trueUserId={trueUserId} setTeam={setTeam} setCurrentUserId={setAsMe} onPreview={startPreview} previewMode={previewMode} />}
       </div>
