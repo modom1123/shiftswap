@@ -630,7 +630,7 @@ async function parseImage(base64, mediaType, apiKey) {
       max_tokens:1000,
       messages:[{role:"user",content:[
         {type:"image", source:{type:"base64",media_type:mediaType,data:base64}},
-        {type:"text",  text:"Extract the weekly schedule. Return ONLY a JSON array, no markdown. Format: [{\"name\":\"Full Name\",\"Mon\":\"HH:MM-HH:MM or null\",\"Tue\":\"...\",\"Wed\":\"...\",\"Thu\":\"...\",\"Fri\":\"...\",\"Sat\":\"...\",\"Sun\":\"...\"}] Use 24h time. null for days off."},
+        {type:"text",  text:"Extract the weekly work schedule from this image. Return ONLY a valid JSON array. No explanation, no markdown, no code fences. Use double-quoted keys and string values. Format: [{\"name\":\"Full Name\",\"Mon\":\"09:00-17:00\",\"Tue\":null,\"Wed\":\"09:00-17:00\",\"Thu\":null,\"Fri\":null,\"Sat\":null,\"Sun\":null}] Use 24h time like 09:00-17:00. Days off must be null not the word null. Include every person."},
       ]}],
     }),
   });
@@ -640,7 +640,15 @@ async function parseImage(base64, mediaType, apiKey) {
   }
   var data = await res.json();
   var text = data.content ? data.content.map(function(b){ return b.text || ""; }).join("") : "";
-  return JSON.parse(text.replace(/```json|```/g, "").trim());
+  // Strip markdown fences and whitespace
+  text = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+  // Extract just the JSON array if there's surrounding text
+  var match = text.match(/\[[\s\S]*\]/);
+  if (match) text = match[0];
+  // Fix common AI JSON mistakes: single quotes, trailing commas
+  text = text.replace(/'/g, '"');
+  text = text.replace(/,(\s*[}\]])/g, "$1");
+  return JSON.parse(text);
 }
 
 function UploadScreen({ team, setTeam }) {
