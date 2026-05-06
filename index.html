@@ -1560,19 +1560,23 @@ function ShiftSwapApp() {
 }
 
 function LoginGate({ children }) {
-  const [authed,   setAuthed]   = useState(false);
+  // Initialize directly from localStorage — no flash
+  const [authed,   setAuthed]   = useState(function(){
+    return localStorage.getItem("ss_auth") === "1";
+  });
 
-  // On mount: if previously logged in, re-establish anonymous Firebase session
+  // On mount: silently re-establish Firebase anonymous session in the background
   useEffect(function(){
     if (localStorage.getItem("ss_auth") === "1") {
-      // Check if already signed in
-      if (auth.currentUser) {
-        setAuthed(true);
-      } else {
-        auth.signInAnonymously()
-          .then(function(){ setAuthed(true); })
-          .catch(function(){ setAuthed(true); }); // still show UI even if anon auth fails
-      }
+      // Firebase persists anonymous sessions automatically via IndexedDB
+      // onAuthStateChanged tells us if the session is still valid
+      var unsub = auth.onAuthStateChanged(function(user){
+        if (!user) {
+          // Session expired — silently renew it
+          auth.signInAnonymously().catch(function(e){ console.warn("anon renew failed:", e); });
+        }
+        unsub();
+      });
     }
   }, []);
   const [user,     setUser]     = useState("");
