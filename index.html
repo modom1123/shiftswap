@@ -55,7 +55,6 @@
     firebase.initializeApp(firebaseConfig);
     var db = firebase.database();
     var auth = firebase.auth();
-    var googleProvider = new firebase.auth.GoogleAuthProvider();
   </script>
 </head>
 <body>
@@ -1272,37 +1271,16 @@ function PreviewBanner({ previewUser, onExit }) {
   );
 }
 
-function ShiftSwapApp({ firebaseUser }) {
+function ShiftSwapApp() {
   const [team,           setTeamState]      = useState([]);
   const [requests,       setReqState]       = useState([]);
   const [schedules,      setSchedulesState] = useState({});
   const [availableWeeks, setAvailableWeeks] = useState([]);
   const [selectedWeek,   setSelectedWeek]   = useState(function(){ return getMondayKey(); });
-  const [trueUserId,     setTrueUserId]     = useState(null);
-  const [currentUserId,  setCurrentUserId]  = useState(null);
+  const [trueUserId,     setTrueUserId]     = useState(function(){ var s=localStorage.getItem('ss_current_user_id'); return s?Number(s):null; });
+  const [currentUserId,  setCurrentUserId]  = useState(function(){ var s=localStorage.getItem('ss_current_user_id'); return s?Number(s):null; });
   const [previewMode,    setPreviewMode]    = useState(false);
 
-  // Resolve team member from Firebase uid
-  useEffect(function(){
-    if (!firebaseUser) return;
-    var uid = firebaseUser.uid;
-    db.ref("users/" + uid).once("value", function(snap){
-      var memberId = snap.val();
-      if (memberId) {
-        setTrueUserId(Number(memberId));
-        setCurrentUserId(Number(memberId));
-        localStorage.setItem("ss_current_user_id", String(memberId));
-      } else {
-        // New user — check localStorage fallback
-        var stored = localStorage.getItem("ss_current_user_id");
-        if (stored) {
-          setTrueUserId(Number(stored));
-          setCurrentUserId(Number(stored));
-        }
-        // else: will show "Who are you?" picker
-      }
-    });
-  }, [firebaseUser && firebaseUser.uid]);
   const [tab, setTab] = useState(function(){
     var hash = window.location.hash.replace("#","");
     var valid = ["home","find","sched","upload","team"];
@@ -1455,10 +1433,6 @@ function ShiftSwapApp({ firebaseUser }) {
     setTrueUserId(id);
     setCurrentUserId(id);
     setPreviewMode(false);
-    // Persist uid → memberId so this device auto-logs in next time
-    if (firebaseUser) {
-      db.ref("users/" + firebaseUser.uid).set(String(id));
-    }
   }
 
   function startPreview(id) {
@@ -1501,7 +1475,6 @@ function ShiftSwapApp({ firebaseUser }) {
                   localStorage.setItem("ss_current_user_id", String(m.id));
                   setTrueUserId(m.id);
                   setCurrentUserId(m.id);
-                  if (firebaseUser) { db.ref("users/" + firebaseUser.uid).set(String(m.id)); }
                 }} style={{background:"#fff",borderRadius:14,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,cursor:"pointer",boxShadow:"0 2px 12px rgba(43,33,24,.08)",border:"1.5px solid "+P.cream}}>
                   <Avatar initials={m.avatar} roleKey={m.role} size={44} />
                   <div style={{flex:1}}>
@@ -1551,9 +1524,7 @@ function ShiftSwapApp({ firebaseUser }) {
           {pendingCount > 0 && (
             <div style={{background:P.tomatoJam,color:"#fff",borderRadius:"50%",width:20,height:20,fontSize:11,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center"}}>{pendingCount}</div>
           )}
-          <div onClick={function(){ if(window.confirm("Sign out?")){ auth.signOut(); localStorage.removeItem("ss_auth"); }}} style={{cursor:"pointer"}}>
-            <Avatar initials={currentUser.avatar} roleKey={currentUser.role} size={34} />
-          </div>
+          <Avatar initials={currentUser.avatar} roleKey={currentUser.role} size={34} />
         </div>
       </div>
 
@@ -1586,74 +1557,89 @@ function ShiftSwapApp({ firebaseUser }) {
 }
 
 function LoginGate({ children }) {
-  const [authState, setAuthState] = useState("loading"); // "loading" | "signed-out" | "signed-in"
-  const [firebaseUser, setFirebaseUser] = useState(null);
-  const [signingIn, setSigningIn] = useState(false);
-  const [authError, setAuthError] = useState(null);
+  const [authed,   setAuthed]   = useState(false);
 
+  // On mount: if previously logged in, re-establish anonymous Firebase session
   useEffect(function(){
-    var unsub = auth.onAuthStateChanged(function(user){
-      setFirebaseUser(user);
-      setAuthState(user ? "signed-in" : "signed-out");
-    });
-    return unsub;
+    if (localStorage.getItem("ss_auth") === "1") {
+      // Check if already signed in
+      if (auth.currentUser) {
+        setAuthed(true);
+      } else {
+        auth.signInAnonymously()
+          .then(function(){ setAuthed(true); })
+          .catch(function(){ setAuthed(true); }); // still show UI even if anon auth fails
+      }
+    }
   }, []);
+  const [user,     setUser]     = useState("");
+  const [pass,     setPass]     = useState("");
+  const [showPass, setShowPass] = useState(false);
+  const [error,    setError]    = useState(null);
 
-  function signIn() {
-    setSigningIn(true);
-    setAuthError(null);
-    auth.signInWithPopup(googleProvider)
-      .catch(function(err){
-        setAuthError("Sign-in failed. Please try again.");
-        console.error(err);
-      })
-      .finally(function(){ setSigningIn(false); });
+  function handleLogin() {
+    if (user.trim().toLowerCase() === "the creator" && pass === "pArtyInth3US@") {
+      // Sign into Firebase anonymously so database rules (auth != null) are satisfied
+      auth.signInAnonymously()
+        .then(function(){
+          localStorage.setItem("ss_auth", "1");
+          setAuthed(true);
+        })
+        .catch(function(err){
+          console.error("Anonymous auth failed:", err);
+          // Still let them in for the UI — database may reject writes
+          localStorage.setItem("ss_auth", "1");
+          setAuthed(true);
+        });
+    } else {
+      setError("Incorrect username or password.");
+      setPass("");
+    }
   }
 
-  if (authState === "loading") {
-    return (
-      <div style={{maxWidth:480,margin:"0 auto",height:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",background:P.cream,flexDirection:"column",gap:16}}>
-        <div style={{fontSize:36}}>🔄</div>
-        <div style={{fontWeight:800,fontSize:15,color:P.ink}}>Loading...</div>
-      </div>
-    );
-  }
+  function handleKey(e) { if (e.key === "Enter") handleLogin(); }
 
-  if (authState === "signed-out") {
-    return (
-      <div style={{maxWidth:480,margin:"0 auto",height:"100dvh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:P.cream,fontFamily:"sans-serif",padding:"32px 24px"}}>
-        <div style={{width:"100%",display:"flex",flexDirection:"column",alignItems:"center",gap:28}}>
-          <div style={{width:80,height:80,borderRadius:20,background:P.tropicalRain,display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,boxShadow:"0 4px 24px rgba(0,132,113,.25)"}}>🔄</div>
-          <div style={{textAlign:"center"}}>
-            <div style={{fontWeight:900,fontSize:28,color:P.ink}}>ShiftSwap</div>
-            <div style={{fontSize:13,color:P.softInk,marginTop:6,fontFamily:"monospace"}}>Washington Square · WP</div>
-          </div>
-          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:12}}>
-            <button
-              onClick={signIn}
-              disabled={signingIn}
-              style={{width:"100%",background:"#fff",border:"1.5px solid "+P.cream,borderRadius:12,padding:"14px 20px",fontSize:15,fontWeight:700,cursor:signingIn?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:12,boxShadow:"0 2px 12px rgba(43,33,24,.1)",color:P.ink}}
-            >
-              <svg width="20" height="20" viewBox="0 0 48 48">
-                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-              </svg>
-              {signingIn ? "Signing in..." : "Sign in with Google"}
+  if (authed) return children;
+
+  return (
+    <div style={{maxWidth:480,margin:"0 auto",height:"100dvh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:P.cream,fontFamily:"sans-serif",padding:"32px 24px"}}>
+      <div style={{width:"100%",display:"flex",flexDirection:"column",alignItems:"center",gap:28}}>
+        <div style={{width:80,height:80,borderRadius:20,background:P.tropicalRain,display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,boxShadow:"0 4px 24px rgba(0,132,113,.25)"}}>🔄</div>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontWeight:900,fontSize:28,color:P.ink}}>ShiftSwap</div>
+          <div style={{fontSize:13,color:P.softInk,marginTop:6,fontFamily:"monospace"}}>Washington Square · WP</div>
+        </div>
+        <div style={{width:"100%",display:"flex",flexDirection:"column",gap:12}}>
+          <input
+            type="text"
+            value={user}
+            onChange={function(e){ setUser(e.target.value); setError(null); }}
+            onKeyDown={handleKey}
+            placeholder="Username"
+            autoCapitalize="none"
+            style={{width:"100%",border:"1.5px solid "+P.cream,borderRadius:12,padding:"14px 16px",fontSize:15,outline:"none",background:"#fff",boxSizing:"border-box",boxShadow:"0 1px 6px rgba(43,33,24,.07)"}}
+          />
+          <div style={{position:"relative",width:"100%"}}>
+            <input
+              type={showPass ? "text" : "password"}
+              value={pass}
+              onChange={function(e){ setPass(e.target.value); setError(null); }}
+              onKeyDown={handleKey}
+              placeholder="Password"
+              style={{width:"100%",border:"1.5px solid "+P.cream,borderRadius:12,padding:"14px 48px 14px 16px",fontSize:15,outline:"none",background:"#fff",boxSizing:"border-box",boxShadow:"0 1px 6px rgba(43,33,24,.07)"}}
+            />
+            <button onClick={function(){ setShowPass(!showPass); }} style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:11,color:P.softInk,fontWeight:700,padding:0}}>
+              {showPass ? "Hide" : "Show"}
             </button>
-            {authError && <div style={{fontSize:12,color:P.tomatoJam,textAlign:"center",fontWeight:700}}>{authError}</div>}
-            <div style={{fontSize:11,color:P.softInk,textAlign:"center",lineHeight:1.6}}>
-              Sign in with your Google account. Only authorized team members can access this app.
-            </div>
           </div>
+          {error && <div style={{fontSize:12,color:P.tomatoJam,textAlign:"center",fontWeight:700}}>{error}</div>}
+          <button onClick={handleLogin} style={{background:P.tropicalRain,color:"#fff",border:"none",borderRadius:12,padding:"14px",fontSize:15,fontWeight:900,cursor:"pointer",marginTop:4,boxShadow:"0 2px 12px rgba(0,132,113,.3)"}}>
+            Sign In
+          </button>
         </div>
       </div>
-    );
-  }
-
-  // Pass firebaseUser down so ShiftSwapApp can use uid for member matching
-  return React.cloneElement(children, {firebaseUser: firebaseUser});
+    </div>
+  );
 }
 
 
