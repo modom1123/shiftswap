@@ -87,6 +87,17 @@ const ROLES = {
 
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
+const INIT_TEAM = [
+  { id:1, name:"Jordan M.",   role:"STORE_LEAD",     avatar:"JM", isCurrentUser:false, schedule:{Mon:"9:00-17:00",  Tue:"9:00-17:00",  Wed:null,          Thu:"9:00-17:00",  Fri:"9:00-17:00",  Sat:null,          Sun:"10:00-18:00" }},
+  { id:2, name:"Alex R.",     role:"ASST_LEAD",      avatar:"AR", isCurrentUser:false, schedule:{Mon:"10:00-18:00", Tue:null,          Wed:"10:00-18:00", Thu:"10:00-18:00", Fri:"10:00-18:00", Sat:"9:00-17:00",  Sun:null          }},
+  { id:3, name:"Sam T.",      role:"OPT_SUPERVISOR", avatar:"ST", isCurrentUser:false, schedule:{Mon:"11:00-19:00", Tue:"11:00-19:00", Wed:"11:00-19:00", Thu:null,          Fri:"11:00-19:00", Sat:"10:00-18:00", Sun:null          }},
+  { id:4, name:"Riley K.",    role:"OPTICIAN",       avatar:"RK", isCurrentUser:false, schedule:{Mon:null,          Tue:"9:00-17:00",  Wed:"9:00-17:00",  Thu:"9:00-17:00",  Fri:null,          Sat:"10:00-18:00", Sun:"10:00-18:00" }},
+  { id:5, name:"Casey B.",    role:"SALES_ADVISOR",  avatar:"CB", isCurrentUser:false, schedule:{Mon:"12:00-20:00", Tue:"12:00-20:00", Wed:null,          Thu:"12:00-20:00", Fri:"12:00-20:00", Sat:"11:00-19:00", Sun:null          }},
+  { id:6, name:"Morgan L.",   role:"SALES_ADVISOR",  avatar:"ML", isCurrentUser:false, schedule:{Mon:"9:00-17:00",  Tue:null,          Wed:"9:00-17:00",  Thu:null,          Fri:"9:00-17:00",  Sat:"10:00-18:00", Sun:"12:00-20:00" }},
+  { id:7, name:"Drew P.",     role:"SUPERVISOR",     avatar:"DP", isCurrentUser:false, schedule:{Mon:null,          Tue:"10:00-18:00", Wed:"10:00-18:00", Thu:"10:00-18:00", Fri:null,          Sat:"9:00-17:00",  Sun:"9:00-17:00"  }},
+  { id:8, name:"Priya (You)", role:"OPTICIAN",       avatar:"PY", isCurrentUser:true,  schedule:{Mon:"9:00-17:00",  Tue:"9:00-17:00",  Wed:null,          Thu:null,          Fri:"11:00-19:00", Sat:"10:00-18:00", Sun:null          }},
+];
+
 const INIT_REQUESTS = [
   { id:1, requesterId:5, type:"COVER", day:"Fri", requesterShift:"12:00-20:00", note:"Doctor appointment", offers:[], status:null },
   { id:2, requesterId:4, type:"SWAP",  day:"Sat", requesterShift:"10:00-18:00", note:"Family event",       offers:[{offererId:6, offeredShift:"10:00-18:00"}], status:null },
