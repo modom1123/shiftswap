@@ -878,7 +878,8 @@ function TeamScreen({ team, currentUser, setTeam }) {
   const editMember = editId ? team.find(function(m){ return m.id === editId; }) : null;
 
   function updateRole(id, role) {
-    setTeam(function(prev){ return prev.map(function(m){ return m.id === id ? Object.assign({}, m, {role:role}) : m; }); });
+    var updated = team.map(function(m){ return m.id === id ? Object.assign({}, m, {role:role}) : m; });
+    setTeam(updated);
     setEditId(null);
   }
 
@@ -930,7 +931,7 @@ function ShiftSwapApp() {
   });
 
   function handleTabChange(key) {
-    handleTabChange(key);
+    setTab(key);
     window.location.hash = key;
   }
   const [loading,  setLoading]   = useState(true);
