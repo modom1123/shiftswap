@@ -675,14 +675,17 @@ function UploadScreen({ team, setTeam }) {
 
   function handleFile(e) {
     var file = e.target.files[0];
-    if (!file) return;
-    if (!apiKey.trim()) { setScanError("Enter your API key first."); return; }
+    if (!file) { setScanError("No file selected."); return; }
+    if (!apiKey.trim()) { setScanError("Enter your Anthropic API key first."); return; }
     setScanError(null); setScanning(true); setScanDone(false);
     var reader = new FileReader();
+    reader.onerror = function(){ setScanError("Could not read file."); setScanning(false); };
     reader.onload = function() {
       var b64 = reader.result.split(",")[1];
+      if (!b64) { setScanError("Could not encode image."); setScanning(false); return; }
       parseImage(b64, file.type, apiKey.trim())
         .then(function(rows){
+          if (!rows || !rows.length) { setScanError("No schedule data found in image."); return; }
           setDraft(function(prev){
             var next = Object.assign({}, prev);
             rows.forEach(function(row){
@@ -745,15 +748,14 @@ function UploadScreen({ team, setTeam }) {
         {apiKey && apiKey.startsWith("sk-ant-") && (
           <div style={{fontSize:11,fontWeight:800,color:P.monetPonds}}>Key saved to this device</div>
         )}
-        <div
-          onClick={function(){ fileRef.current && fileRef.current.click(); }}
-          style={{border:"2px dashed "+P.airplaneView,borderRadius:12,padding:"18px",textAlign:"center",cursor:"pointer",background:P.airplaneView+"12",opacity:apiKey.trim()?1:0.45}}
+        <label
+          style={{border:"2px dashed "+P.airplaneView,borderRadius:12,padding:"18px",textAlign:"center",cursor:"pointer",background:P.airplaneView+"12",opacity:apiKey.trim()?1:0.45,display:"block"}}
         >
           <div style={{fontSize:26,marginBottom:6}}>📷</div>
           <div style={{fontWeight:800,fontSize:13,color:P.ink}}>{scanning ? "Reading with AI..." : "Tap to scan schedule photo"}</div>
           <div style={{fontSize:11,color:P.softInk,marginTop:3}}>PNG · JPG · HEIC</div>
-          <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFile} />
-        </div>
+          <input type="file" accept="image/*" style={{display:"none"}} onChange={handleFile} />
+        </label>
         {scanDone && <div style={{fontSize:12,fontWeight:800,color:P.monetPonds}}>Scan complete — review and tap Save.</div>}
         {scanError && <div style={{fontSize:12,color:P.tomatoJam,background:P.peonyBundle+"55",borderRadius:8,padding:"8px 12px"}}>{scanError}</div>}
         <div style={{fontSize:11,color:P.softInk,lineHeight:1.5}}>Get a key free at <strong>console.anthropic.com</strong>. Under $0.01 per scan. Saved locally only.</div>
