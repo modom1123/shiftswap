@@ -107,17 +107,25 @@ function parseTime(t) { const [h,m] = t.split(":").map(Number); return h + m/60;
 function shiftHours(s) { if (!s) return 0; const [a,b] = s.split("-"); return parseTime(b) - parseTime(a); }
 
 function fmt12(t) {
-  if (!t) return "";
-  const [h,m] = t.split(":").map(Number);
-  const ampm = h >= 12 ? "pm" : "am";
-  const hr = h % 12 || 12;
-  return m === 0 ? `${hr}${ampm}` : `${hr}:${String(m).padStart(2,"0")}${ampm}`;
+  if (!t || typeof t !== "string") return "";
+  var parts = t.split(":");
+  if (parts.length < 2) return t;
+  var h = Number(parts[0]);
+  var m = Number(parts[1]);
+  if (isNaN(h) || isNaN(m)) return t;
+  var ampm = h >= 12 ? "pm" : "am";
+  var hr = h % 12 || 12;
+  return m === 0 ? (hr + ampm) : (hr + ":" + String(m).padStart(2,"0") + ampm);
 }
 
 function fmtShift(s) {
-  if (!s) return "OFF";
-  const [a,b] = s.split("-");
-  return fmt12(a) + "-" + fmt12(b);
+  if (!s || typeof s !== "string") return "OFF";
+  var parts = s.split("-");
+  if (parts.length < 2) return s;
+  var fa = fmt12(parts[0].trim());
+  var fb = fmt12(parts[1].trim());
+  if (!fa || !fb) return s;
+  return fa + "-" + fb;
 }
 
 function diffInfo(a, b) {
@@ -962,37 +970,67 @@ function UploadScreen({ team, setTeam }) {
 }
 
 
-function EditRoleSheet({ member, onSave, onClose }) {
+function EditRoleSheet({ member, onSave, onClose, onRemove }) {
+  const [confirmRemove, setConfirmRemove] = useState(false);
   return (
     <Sheet onClose={onClose}>
-      <div style={{fontWeight:900,fontSize:17,color:P.ink,marginBottom:16}}>Edit Role · {member.name}</div>
+      <div style={{fontWeight:900,fontSize:17,color:P.ink,marginBottom:16}}>Edit · {member.name}</div>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {Object.entries(ROLES).map(function([key, r]){
           return (
-            <div key={key} onClick={function(){ onSave(member.id, key); }} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:10,cursor:"pointer",background:member.role === key ? r.bg + "30" : "#fafafa",border:"2px solid " + (member.role === key ? r.bg : P.cream),transition:"all .15s"}}>
+            <div key={key} onClick={function(){ onSave(member.id, key); }} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:10,cursor:"pointer",background:member.role===key?r.bg+"30":"#fafafa",border:"2px solid "+(member.role===key?r.bg:P.cream),transition:"all .15s"}}>
               <div style={{width:12,height:12,borderRadius:"50%",background:r.bg,flexShrink:0}} />
               <div style={{flex:1}}>
                 <div style={{fontWeight:900,fontSize:14,color:P.ink}}>{r.label}</div>
                 {r.secondary && <div style={{fontSize:11,color:P.softInk}}>+ {r.secondary}</div>}
               </div>
-              {member.role === key && <span style={{color:P.tropicalRain,fontSize:16,fontWeight:900}}>✓</span>}
+              {member.role===key && <span style={{color:P.tropicalRain,fontSize:16,fontWeight:900}}>✓</span>}
             </div>
           );
         })}
       </div>
+      {onRemove && (
+        <div style={{marginTop:20,borderTop:"1.5px solid "+P.cream,paddingTop:16}}>
+          {!confirmRemove ? (
+            <button onClick={function(){ setConfirmRemove(true); }} style={{width:"100%",background:P.peonyBundle+"55",border:"none",borderRadius:10,padding:"12px",fontSize:13,fontWeight:800,cursor:"pointer",color:P.tomatoJam}}>
+              Remove {member.name} from team
+            </button>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{fontSize:13,color:P.softInk,textAlign:"center",marginBottom:4}}>Are you sure? This cannot be undone.</div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={function(){ setConfirmRemove(false); }} style={{flex:1,background:P.cream,border:"none",borderRadius:10,padding:"11px",fontSize:13,fontWeight:800,cursor:"pointer",color:P.softInk}}>Cancel</button>
+                <button onClick={function(){ onRemove(member.id); onClose(); }} style={{flex:1,background:P.tomatoJam,border:"none",borderRadius:10,padding:"11px",fontSize:13,fontWeight:800,cursor:"pointer",color:"#fff"}}>Yes, Remove</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </Sheet>
   );
 }
 
-function TeamScreen({ team, currentUser, setTeam }) {
-  const [editId, setEditId] = useState(null);
-  const me = team.find(function(m){ return m.id === currentUser.id; });
+function TeamScreen({ team, currentUser, setTeam, setCurrentUserId }) {
+  const [editId,    setEditId]    = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
+  const me = team.find(function(m){ return m.id === currentUser.id; }) || team[0];
   const editMember = editId ? team.find(function(m){ return m.id === editId; }) : null;
 
   function updateRole(id, role) {
     var updated = team.map(function(m){ return m.id === id ? Object.assign({}, m, {role:role}) : m; });
     setTeam(updated);
     setEditId(null);
+  }
+
+  function removeMember(id) {
+    var updated = team.filter(function(m){ return m.id !== id; });
+    setTeam(updated);
+    setConfirmId(null);
+  }
+
+  function setAsMe(id) {
+    localStorage.setItem("ss_current_user_id", String(id));
+    setCurrentUserId(id);
   }
 
   return (
@@ -1004,22 +1042,39 @@ function TeamScreen({ team, currentUser, setTeam }) {
         {ROLES[me.role].secondary && (
           <div style={{fontSize:11,opacity:.6,marginTop:2}}>+ {ROLES[me.role].secondary}</div>
         )}
+        <div style={{fontSize:11,opacity:.6,marginTop:6}}>This is you — tap "Set as Me" on any member to switch</div>
       </div>
 
       <div>
         <SLabel>Team Members</SLabel>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {team.map(function(member){
+            var isMe = member.id === currentUser.id;
             return (
-              <div key={member.id} style={{background:"#fff",borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 1px 8px rgba(43,33,24,.06)"}}>
+              <div key={member.id} style={{background:"#fff",borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:10,boxShadow:"0 1px 8px rgba(43,33,24,.06)",border:"1.5px solid "+(isMe?P.tropicalRain:P.cream)}}>
                 <Avatar initials={member.avatar} roleKey={member.role} />
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:900,fontSize:14,color:P.ink}}>{member.name}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:900,fontSize:14,color:P.ink,display:"flex",alignItems:"center",gap:6}}>
+                    {member.name}
+                    {isMe && <span style={{fontSize:9,background:P.tropicalRain,color:"#fff",padding:"2px 6px",borderRadius:4,fontFamily:"monospace",fontWeight:800}}>YOU</span>}
+                  </div>
                   <div style={{marginTop:3}}><Pill roleKey={member.role} /></div>
                 </div>
-                <button onClick={function(){ setEditId(member.id); }} style={{background:P.cream,border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:800,cursor:"pointer",color:P.softInk}}>
-                  Edit
-                </button>
+                <div style={{display:"flex",gap:6,flexShrink:0}}>
+                  {!isMe && (
+                    <button onClick={function(){ setAsMe(member.id); }} style={{background:P.tropicalRain+"22",border:"none",borderRadius:7,padding:"5px 8px",fontSize:10,fontWeight:800,cursor:"pointer",color:P.tropicalRain}}>
+                      Set as Me
+                    </button>
+                  )}
+                  <button onClick={function(){ setEditId(member.id); }} style={{background:P.cream,border:"none",borderRadius:7,padding:"5px 9px",fontSize:10,fontWeight:800,cursor:"pointer",color:P.softInk}}>
+                    Edit
+                  </button>
+                  {!isMe && (
+                    <button onClick={function(){ setConfirmId(member.id); }} style={{background:P.peonyBundle+"55",border:"none",borderRadius:7,padding:"5px 9px",fontSize:10,fontWeight:800,cursor:"pointer",color:P.tomatoJam}}>
+                      Remove
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -1027,7 +1082,22 @@ function TeamScreen({ team, currentUser, setTeam }) {
       </div>
 
       {editMember && (
-        <EditRoleSheet member={editMember} onSave={updateRole} onClose={function(){ setEditId(null); }} />
+        <EditRoleSheet member={editMember} onSave={updateRole} onClose={function(){ setEditId(null); }} onRemove={editMember.id !== currentUser.id ? removeMember : null} />
+      )}
+
+      {confirmId && (
+        <Sheet onClose={function(){ setConfirmId(null); }}>
+          <div style={{fontWeight:900,fontSize:17,color:P.ink,marginBottom:8}}>Remove {team.find(function(m){return m.id===confirmId;}) && team.find(function(m){return m.id===confirmId;}).name}?</div>
+          <div style={{fontSize:13,color:P.softInk,marginBottom:20,lineHeight:1.5}}>This will remove them from the team and delete their schedule. This cannot be undone.</div>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={function(){ setConfirmId(null); }} style={{flex:1,background:P.cream,border:"none",borderRadius:10,padding:"12px",fontSize:14,fontWeight:800,cursor:"pointer",color:P.softInk}}>
+              Cancel
+            </button>
+            <button onClick={function(){ removeMember(confirmId); }} style={{flex:1,background:P.tomatoJam,border:"none",borderRadius:10,padding:"12px",fontSize:14,fontWeight:800,cursor:"pointer",color:"#fff"}}>
+              Remove
+            </button>
+          </div>
+        </Sheet>
       )}
     </div>
   );
@@ -1036,6 +1106,10 @@ function TeamScreen({ team, currentUser, setTeam }) {
 function ShiftSwapApp() {
   const [team,     setTeamState] = useState([]);
   const [requests, setReqState]  = useState([]);
+  const [currentUserId, setCurrentUserId] = useState(function(){
+    var stored = localStorage.getItem("ss_current_user_id");
+    return stored ? Number(stored) : 8;
+  });
   const [tab, setTab] = useState(function(){
     var hash = window.location.hash.replace("#","");
     var valid = ["home","find","sched","upload","team"];
@@ -1163,7 +1237,7 @@ function ShiftSwapApp() {
     );
   }
 
-  var currentUser = team.find(function(m){ return m.isCurrentUser; });
+  var currentUser = team.find(function(m){ return m.id === currentUserId; }) || team.find(function(m){ return m.isCurrentUser; }) || team[0];
   if (!currentUser) {
     return (
       <div style={{height:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",background:P.cream,flexDirection:"column",gap:16}}>
@@ -1207,7 +1281,7 @@ function ShiftSwapApp() {
         {tab === "find"   && <FindScreen     team={team} currentUser={currentUser} onCreateRequest={handleCreate} />}
         {tab === "sched"  && <ScheduleScreen team={team} currentUser={currentUser} onCreateRequest={handleCreate} />}
         {tab === "upload" && <UploadScreen   team={team} setTeam={setTeam} />}
-        {tab === "team"   && <TeamScreen     team={team} currentUser={currentUser} setTeam={setTeam} />}
+        {tab === "team"   && <TeamScreen     team={team} currentUser={currentUser} setTeam={setTeam} setCurrentUserId={setCurrentUserId} />}
       </div>
 
       <div style={{position:"absolute",bottom:0,left:0,right:0,background:"#fff",borderTop:"1.5px solid " + P.cream,display:"grid",gridTemplateColumns:"repeat(5,1fr)"}}>
