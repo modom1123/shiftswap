@@ -1014,6 +1014,10 @@ function UploadScreen({ team, setTeam, selectedWeek, setSelectedWeek, saveWeekSc
         </div>
       )}
 
+      <button onClick={saveAll} style={{background:P.tropicalRain,color:"#fff",border:"none",borderRadius:12,padding:"15px",fontSize:15,fontWeight:900,cursor:"pointer"}}>
+        Save Schedule
+      </button>
+
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
           <div style={{fontSize:11,fontWeight:800,color:P.softInk,letterSpacing:".08em",fontFamily:"monospace",textTransform:"uppercase"}}>Manual Edits</div>
@@ -1079,10 +1083,6 @@ function UploadScreen({ team, setTeam, selectedWeek, setSelectedWeek, saveWeekSc
         <input type="date" value={selectedWeek} onChange={function(e){ if(e.target.value) setSelectedWeek(getMondayKey(e.target.value)); }} style={{border:"1.5px solid "+P.cream,borderRadius:8,padding:"8px 12px",fontSize:13,outline:"none",background:"#fafafa"}} />
         <div style={{fontSize:11,color:P.softInk}}>Auto-snapped to Monday · {fmtWeekLabel(selectedWeek)}</div>
       </div>
-      <button onClick={saveAll} style={{background:P.tropicalRain,color:"#fff",border:"none",borderRadius:12,padding:"15px",fontSize:15,fontWeight:900,cursor:"pointer",position:"sticky",bottom:80}}>
-        Save Schedule
-      </button>
-
       <div>
         <SLabel>Role Color Guide</SLabel>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
