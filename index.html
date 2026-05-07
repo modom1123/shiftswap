@@ -97,20 +97,27 @@ function getMondayKey(date) {
   return d.toISOString().slice(0,10);
 }
 
+function snapToMonday(key) {
+  var d = new Date(key + "T12:00:00");
+  var day = d.getDay();
+  var diff = (day === 0 ? -6 : 1 - day);
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
 function getDayDate(weekKey, dayName) {
-  // Returns "Mon 5/6" style label for a given week's day
   var dayIndex = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].indexOf(dayName);
   if (dayIndex === -1 || !weekKey) return dayName;
-  var d = new Date(weekKey + "T12:00:00");
+  var d = snapToMonday(weekKey);
   d.setDate(d.getDate() + dayIndex);
   return dayName + " " + (d.getMonth()+1) + "/" + d.getDate();
 }
 
 function fmtWeekLabel(key) {
-  var d = new Date(key + "T12:00:00");
-  var sun = new Date(d); sun.setDate(d.getDate() + 6);
+  var mon = snapToMonday(key);
+  var sun = new Date(mon); sun.setDate(mon.getDate() + 6);
   var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  return months[d.getMonth()] + " " + d.getDate() + " - " + months[sun.getMonth()] + " " + sun.getDate();
+  return months[mon.getMonth()] + " " + mon.getDate() + " - " + months[sun.getMonth()] + " " + sun.getDate();
 }
 
 var BLANK_SCHED = {Mon:null,Tue:null,Wed:null,Thu:null,Fri:null,Sat:null,Sun:null};
