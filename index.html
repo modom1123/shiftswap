@@ -1294,7 +1294,7 @@ function ShiftSwapApp() {
   useEffect(function(){
     var settled = false;
     function done() { if (!settled) { settled = true; setLoading(false); } }
-    var timeout = setTimeout(done, 8000);
+    var timeout = setTimeout(done, 12000);
 
     function normalizeTeam(val) {
       return Object.values(val).sort(function(a,b){ return Number(a.id)-Number(b.id); }).map(function(m){
@@ -1302,56 +1302,72 @@ function ShiftSwapApp() {
       });
     }
 
-    db.ref("team").once("value", function(snap){
-      if (!snap.val()) {
-        var obj = {};
-        INIT_TEAM.forEach(function(m){ obj[m.id] = m; });
-        db.ref("team").set(obj, function(){
-          db.ref("team").on("value", function(s){ if(s.val()) setTeamState(normalizeTeam(s.val())); done(); });
-        });
-      } else {
-        db.ref("team").on("value", function(s){ if(s.val()) setTeamState(normalizeTeam(s.val())); done(); });
-      }
-    }, function(err){ console.error("team err:", err); done(); });
-
-    db.ref("requests").once("value", function(snap){
-      if (!snap.val()) {
-        var obj = {};
-        INIT_REQUESTS.forEach(function(r){ obj[r.id] = r; });
-        db.ref("requests").set(obj, function(){
-          db.ref("requests").on("value", function(s){ if(s.val()) setReqState(Object.values(s.val()).sort(function(a,b){return Number(b.id)-Number(a.id);})); });
-        });
-      } else {
-        db.ref("requests").on("value", function(s){ if(s.val()) setReqState(Object.values(s.val()).sort(function(a,b){return Number(b.id)-Number(a.id);})); });
-      }
-    }, function(err){ console.error("requests err:", err); });
-
-    // Schedules node
-    db.ref("schedules").on("value", function(snap){
-      var val = snap.val() || {};
-      // Normalize: ensure each week's member schedules have all 7 days
-      var normalized = {};
-      Object.keys(val).forEach(function(weekKey){
-        normalized[weekKey] = {};
-        Object.keys(val[weekKey]).forEach(function(mid){
-          normalized[weekKey][mid] = Object.assign({}, BLANK_SCHED, val[weekKey][mid] || {});
-        });
-      });
-      setSchedulesState(normalized);
-      console.log("Schedules loaded:", Object.keys(normalized));
-      var weeks = Object.keys(val).sort();
-      if (weeks.length > 0) {
-        setAvailableWeeks(weeks);
-        // Ensure current week is in the list
-        var thisWeek = getMondayKey();
-        if (weeks.indexOf(thisWeek) === -1) {
-          setAvailableWeeks(function(prev){
-            var merged = prev.concat([thisWeek]).sort();
-            return merged.filter(function(v,i,a){ return a.indexOf(v)===i; });
+    function startListeners() {
+      db.ref("team").once("value", function(snap){
+        if (!snap.val()) {
+          var obj = {};
+          INIT_TEAM.forEach(function(m){ obj[m.id] = m; });
+          db.ref("team").set(obj, function(){
+            db.ref("team").on("value", function(s){ if(s.val()) setTeamState(normalizeTeam(s.val())); done(); });
           });
+        } else {
+          db.ref("team").on("value", function(s){ if(s.val()) setTeamState(normalizeTeam(s.val())); done(); });
         }
+      }, function(err){ console.error("team err:", err); done(); });
+
+      db.ref("requests").once("value", function(snap){
+        if (!snap.val()) {
+          var obj = {};
+          INIT_REQUESTS.forEach(function(r){ obj[r.id] = r; });
+          db.ref("requests").set(obj, function(){
+            db.ref("requests").on("value", function(s){ if(s.val()) setReqState(Object.values(s.val()).sort(function(a,b){return Number(b.id)-Number(a.id);})); });
+          });
+        } else {
+          db.ref("requests").on("value", function(s){ if(s.val()) setReqState(Object.values(s.val()).sort(function(a,b){return Number(b.id)-Number(a.id);})); });
+        }
+      }, function(err){ console.error("requests err:", err); });
+
+      db.ref("schedules").on("value", function(snap){
+        var val = snap.val() || {};
+        var normalized = {};
+        Object.keys(val).forEach(function(weekKey){
+          normalized[weekKey] = {};
+          Object.keys(val[weekKey]).forEach(function(mid){
+            normalized[weekKey][mid] = Object.assign({}, BLANK_SCHED, val[weekKey][mid] || {});
+          });
+        });
+        setSchedulesState(normalized);
+        var weeks = Object.keys(val).sort();
+        if (weeks.length > 0) {
+          setAvailableWeeks(weeks);
+          var thisWeek = getMondayKey();
+          if (weeks.indexOf(thisWeek) === -1) {
+            setAvailableWeeks(function(prev){
+              var merged = prev.concat([thisWeek]).sort();
+              return merged.filter(function(v,i,a){ return a.indexOf(v)===i; });
+            });
+          }
+        } else {
+          setAvailableWeeks([getMondayKey()]);
+        }
+      });
+    }
+
+    // Wait for Firebase auth to be ready before reading data
+    // This is critical on mobile where the anonymous session needs a moment to establish
+    var authUnsub = auth.onAuthStateChanged(function(user){
+      authUnsub(); // only need this once
+      if (user) {
+        startListeners();
       } else {
-        setAvailableWeeks([getMondayKey()]);
+        // Not signed in — sign in anonymously first, then start listeners
+        auth.signInAnonymously()
+          .then(function(){ startListeners(); })
+          .catch(function(err){
+            console.error("Anonymous sign-in failed:", err);
+            // Try starting listeners anyway (database might be open)
+            startListeners();
+          });
       }
     });
 
