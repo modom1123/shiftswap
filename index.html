@@ -1353,23 +1353,17 @@ function ShiftSwapApp() {
       });
     }
 
-    // Wait for Firebase auth to be ready before reading data
-    // This is critical on mobile where the anonymous session needs a moment to establish
-    var authUnsub = auth.onAuthStateChanged(function(user){
-      authUnsub(); // only need this once
-      if (user) {
-        startListeners();
-      } else {
-        // Not signed in — sign in anonymously first, then start listeners
-        auth.signInAnonymously()
-          .then(function(){ startListeners(); })
-          .catch(function(err){
-            console.error("Anonymous sign-in failed:", err);
-            // Try starting listeners anyway (database might be open)
-            startListeners();
-          });
-      }
-    });
+    // Start listeners immediately (works if db rules are open or auth already exists)
+    startListeners();
+
+    // Also ensure anonymous auth is established for future writes
+    if (typeof auth !== "undefined") {
+      auth.onAuthStateChanged(function(user){
+        if (!user) {
+          auth.signInAnonymously().catch(function(e){ console.warn("anon auth:", e); });
+        }
+      });
+    }
 
     return function(){
       clearTimeout(timeout);
@@ -1464,10 +1458,11 @@ function ShiftSwapApp() {
   // ── Loading / guard ─────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div style={{height:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",background:P.cream,flexDirection:"column",gap:16}}>
+      <div style={{height:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",background:P.cream,flexDirection:"column",gap:16,padding:"24px"}}>
         <div style={{fontSize:36}}>🔄</div>
         <div style={{fontWeight:800,fontSize:15,color:P.ink}}>Loading ShiftSwap...</div>
         <div style={{fontSize:12,color:P.softInk}}>Connecting to database</div>
+        {team.length > 0 && <div style={{fontSize:11,color:P.tropicalRain,fontWeight:700}}>{team.length} team members loaded</div>}
       </div>
     );
   }
@@ -1507,12 +1502,16 @@ function ShiftSwapApp() {
     );
   }
 
-  // Still loading team
+  // Team loaded but no user selected yet (shouldn't normally reach here)
   if (!currentUser) {
     return (
-      <div style={{height:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",background:P.cream,flexDirection:"column",gap:16}}>
+      <div style={{height:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",background:P.cream,flexDirection:"column",gap:16,padding:"24px"}}>
         <div style={{fontSize:36}}>⏳</div>
-        <div style={{fontWeight:800,fontSize:15,color:P.ink}}>Loading team...</div>
+        <div style={{fontWeight:800,fontSize:15,color:P.ink}}>Still connecting...</div>
+        <div style={{fontSize:12,color:P.softInk,textAlign:"center"}}>Team has {team.length} members loaded.</div>
+        <button onClick={function(){ window.location.reload(); }} style={{background:P.tropicalRain,color:"#fff",border:"none",borderRadius:10,padding:"12px 24px",fontSize:14,fontWeight:800,cursor:"pointer",marginTop:8}}>
+          Retry
+        </button>
       </div>
     );
   }
